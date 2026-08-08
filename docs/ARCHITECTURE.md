@@ -39,6 +39,8 @@ The UI, transaction builder, accounting and risk disclosures must never merge th
 
 The compiled market validator now enforces items 1–3 at the shard transition layer: exactly one continuing output at the same script address, NFT preservation, exact asset delta, exact next datum and monotonic nonce. Oracle-signed collateral valuation remains the next contract gate.
 
+Oracle valuation is now supplied through a unique-NFT reference input whose publisher-signed state thread enforces rational prices, sequence increments and finite validity windows. A separate position validator binds collateral changes to the owner's verification-key signature and preserves a unique position NFT. Atomic debt synchronization and liquidation remain the next gates.
+
 ## Production services
 
 | Service | Suggested implementation | Purpose |
