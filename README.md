@@ -5,7 +5,8 @@ Cardano-native lending, yield-bearing ADA collateral, atomic flash execution and
 ## What is implemented
 
 - Responsive CardFi Web dApp MVP
-- Interactive supply, borrow and flash-execution flows
+- Interactive supply, borrow, flash-execution and native delegation flows with deterministic receipts
+- Dedicated market, position, Flash Lab, SPO, Vault Hooks and governance workspaces
 - Market utilization, LTV, health-factor and flash-fee calculations
 - Wallet-connected and disconnected position states
 - Aiken market, position, oracle and governance validators
@@ -54,6 +55,7 @@ scripts/              Blueprint and deployment artifact tooling
 infra/stake-pool/      CardFi SPO topology, services, metadata and runbook
 docs/ARCHITECTURE.md  System design and production boundary
 CardFi_*.md           Whitepaper, pitch and Catalyst copy
+docs/SHOWCASE_RUNBOOK.md  Investor/Catalyst demonstration sequence
 ```
 
 ## Current stage

@@ -9,6 +9,12 @@ import { connectCardanoWallet, shortAddress, type WalletSession } from './lib/ca
 
 type Action = 'Supply' | 'Borrow' | 'Flash';
 
+interface DemoReceipt {
+  title: string;
+  detail: string;
+  txId: string;
+}
+
 interface StakePool {
   ticker: string;
   name: string;
@@ -39,7 +45,7 @@ function Sparkline({ color }: { color: string }) {
   );
 }
 
-function ActionModal({ action, market, onClose }: { action: Action; market: Market; onClose: () => void }) {
+function ActionModal({ action, market, onClose, onSubmit }: { action: Action; market: Market; onClose: () => void; onSubmit: (receipt: DemoReceipt) => void }) {
   const [amount, setAmount] = useState('1000');
   const numeric = Math.max(0, Number(amount) || 0);
   const usd = numeric * market.price;
@@ -66,14 +72,18 @@ function ActionModal({ action, market, onClose }: { action: Action; market: Mark
           {isFlash && <><span>協議費（7 bps）</span><strong>{formatNumber(flashFee(numeric))} {market.symbol}</strong><span>原子償還</span><strong>{formatNumber(numeric + flashFee(numeric))} {market.symbol}</strong></>}
         </div>
         <div className="safety-note"><ShieldCheck size={18} /><span>交易提交前會模擬所有資產變化；若最終條件不成立，整筆交易失敗。</span></div>
-        <button className="primary wide" onClick={onClose}>{buttonLabel}<ArrowUpRight size={17} /></button>
+        <button className="primary wide" onClick={() => onSubmit({
+          title: `${action} ${market.symbol} 模擬成功`,
+          detail: `${formatNumber(numeric)} ${market.symbol} · ${action === 'Flash' ? `原子償還 ${formatNumber(numeric + flashFee(numeric))}` : compactUsd(usd)}`,
+          txId: `sim_${action.toLowerCase()}_${market.symbol.toLowerCase()}_${Math.round(numeric * 1000).toString(16)}`,
+        })}>{buttonLabel}<ArrowUpRight size={17} /></button>
         <p className="demo-note">Demo 模式｜尚未連接 Cardano 測試網</p>
       </section>
     </div>
   );
 }
 
-function StakeModal({ pool, onClose }: { pool: StakePool; onClose: () => void }) {
+function StakeModal({ pool, onClose, onSubmit }: { pool: StakePool; onClose: () => void; onSubmit: (receipt: DemoReceipt) => void }) {
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="modal" role="dialog" aria-modal="true" aria-label={`委託至 ${pool.ticker}`} onMouseDown={(e) => e.stopPropagation()}>
@@ -89,11 +99,73 @@ function StakeModal({ pool, onClose }: { pool: StakePool; onClose: () => void })
         </div>
         <div className="native-stake-note"><Server size={19} /><div><b>原生鏈上委託，不是借貸存款</b><span>ADA 保留在你的錢包；交易只提交 stake address registration／delegation certificate。沒有鎖倉，仍可隨時支出。</span></div></div>
         <div className="safety-note"><ShieldCheck size={18} /><span>實際獎勵取決於池表現、飽和度、固定成本、margin 與 Cardano 網路參數，不保證固定 APY。</span></div>
-        <button className="primary wide" onClick={onClose}>建立鏈上委託交易<ArrowUpRight size={17} /></button>
+        <button className="primary wide" onClick={() => onSubmit({
+          title: `委託 [${pool.ticker}] 模擬成功`,
+          detail: 'Stake registration + delegation certificates · ADA 不離開錢包',
+          txId: 'sim_delegate_cfi_001',
+        })}>建立鏈上委託交易<ArrowUpRight size={17} /></button>
         <p className="demo-note">Demo 模式｜正式版將透過 CIP-30 錢包簽署委託憑證</p>
       </section>
     </div>
   );
+}
+
+function WorkspacePanel({
+  active,
+  wallet,
+  onConnect,
+  onAction,
+  onStake,
+}: {
+  active: string;
+  wallet: WalletSession | null;
+  onConnect: () => void;
+  onAction: (action: Action, market: Market) => void;
+  onStake: () => void;
+}) {
+  if (active === '總覽') return null;
+
+  if (active === '市場') return <section className="workspace-panel">
+    <div className="workspace-head"><div><span className="eyebrow">LIVE DEMO MARKETS</span><h2>借貸市場操作台</h2><p>選擇供應或借款，預覽利率、LTV 與模擬交易結果。</p></div><Droplets size={24} /></div>
+    <div className="workspace-grid four">{markets.map((market) => <article className="workspace-card" key={market.symbol}>
+      <div className="workspace-asset"><AssetIcon market={market} /><div><b>{market.symbol}</b><small>{market.name}</small></div></div>
+      <dl><div><dt>供應 APY</dt><dd className="positive">{market.supplyApr}%</dd></div><div><dt>借款 APY</dt><dd>{market.borrowApr}%</dd></div><div><dt>最大 LTV</dt><dd>{market.ltv}%</dd></div></dl>
+      <div className="workspace-actions"><button onClick={() => onAction('Supply', market)}>供應</button><button onClick={() => onAction('Borrow', market)}>借款</button></div>
+    </article>)}</div>
+  </section>;
+
+  if (active === '我的倉位') return <section className="workspace-panel">
+    <div className="workspace-head"><div><span className="eyebrow">POSITION CONTROL</span><h2>倉位與風險中心</h2><p>抵押、債務、原生 PoS 收益及清算邊界集中展示。</p></div><Gauge size={24} /></div>
+    <div className="workspace-grid three">
+      <article className="workspace-card metric"><span>健康係數</span><strong>{wallet ? '2.06' : '—'}</strong><small>{wallet ? '安全區間 · 清算門檻 80%' : '連接錢包後顯示'}</small></article>
+      <article className="workspace-card metric"><span>ADA 抵押收益</span><strong className="positive">3.41%</strong><small>借貸抵押與 CardFi SPO 委託分開計算</small></article>
+      <article className="workspace-card metric"><span>可借額度</span><strong>{wallet ? '$4.33K' : '—'}</strong><small>Governance LTV 上限 70%</small></article>
+    </div>
+    {!wallet && <button className="primary workspace-connect" onClick={onConnect}>連接 Demo／CIP-30 錢包</button>}
+  </section>;
+
+  if (active === 'Flash Lab') return <section className="workspace-panel flash-workspace">
+    <div className="workspace-head"><div><span className="eyebrow">ATOMIC EXECUTION LAB</span><h2>Flash Loan 情境模擬器</h2><p>借出、策略呼叫、償還與費用必須在同一筆 Cardano 交易中成立。</p></div><Zap size={24} /></div>
+    <div className="flow-line"><span>01 借出流動性</span><i /><span>02 執行 Hook</span><i /><span>03 原子償還</span><i /><span>04 Validator 驗證</span></div>
+    <div className="workspace-grid three"><article className="workspace-card"><b>套利路由</b><p>DEX_A → DEX_B 價差模擬</p><button onClick={() => onAction('Flash', markets[0])}>模擬 ADA Flash</button></article><article className="workspace-card"><b>閃電清算</b><p>還債並領取受限清算獎勵</p><button onClick={() => onAction('Flash', markets[1])}>模擬 DJED 清算</button></article><article className="workspace-card"><b>費用模型</b><p>7 bps · 100,000 ADA 範例</p><strong className="positive">70 ADA</strong></article></div>
+  </section>;
+
+  if (active === 'ADA 鏈上質押') return <section className="workspace-panel">
+    <div className="workspace-head"><div><span className="eyebrow">CARDIFI STAKE POOL</span><h2>[CFI] 原生 ADA 委託</h2><p>CardFi 自建 Stake Pool；ADA 留在用戶錢包，僅簽署鏈上委託憑證。</p></div><Server size={24} /></div>
+    <div className="workspace-grid three"><article className="workspace-card metric"><span>部署狀態</span><strong>Config Ready</strong><small>Block Producer／Relay 範本已驗證</small></article><article className="workspace-card metric"><span>Pool Margin</span><strong>2.0%</strong><small>展示參數，註冊前可調整</small></article><article className="workspace-card metric"><span>資產託管</span><strong className="positive">Non-custodial</strong><small>無鎖倉、不移轉 ADA 本金</small></article></div>
+    <button className="primary workspace-connect" onClick={onStake}>建立 [CFI] 委託模擬</button>
+  </section>;
+
+  if (active === 'Vault Hooks') return <section className="workspace-panel">
+    <div className="workspace-head"><div><span className="eyebrow">PROGRAMMABLE VAULTS</span><h2>Smart Vault Hooks</h2><p>展示第三方策略如何在資產白名單、滑點與到期時間限制內組合 CardFi。</p></div><Code2 size={24} /></div>
+    <div className="workspace-grid three"><article className="workspace-card"><b>Leveraged Farming</b><p>供應 → 借款 → DEX 流動性，一鍵原子路由。</p><span className="status-tag">SPEC READY</span></article><article className="workspace-card"><b>Self-Repaying Loan</b><p>將 PoS／策略收益按週期自動抵扣債務。</p><span className="status-tag">SPEC READY</span></article><article className="workspace-card"><b>Liquidation Shield</b><p>健康係數接近門檻時執行受限去槓桿。</p><span className="status-tag">SPEC READY</span></article></div>
+  </section>;
+
+  return <section className="workspace-panel">
+    <div className="workspace-head"><div><span className="eyebrow">ON-CHAIN GOVERNANCE</span><h2>協議風險控制中心</h2><p>Governance NFT 統一發布市場、清算與 Oracle 授權參數。</p></div><Orbit size={24} /></div>
+    <div className="governance-strip"><span>Max LTV <b>70%</b></span><span>Liquidation <b>80%</b></span><span>Close Factor <b>50%</b></span><span>Bonus <b>5%</b></span></div>
+    <div className="validator-list"><div><ShieldCheck size={17} /><span>Governance Validator</span><code>64b0d65a…0de31</code><em>COMPILED</em></div><div><ShieldCheck size={17} /><span>Market Validator</span><code>14c01b49…13200</code><em>COMPILED</em></div><div><ShieldCheck size={17} /><span>Oracle Validator</span><code>6651fbd6…2a73f</code><em>COMPILED</em></div><div><ShieldCheck size={17} /><span>Position Validator</span><code>1aa08896…57f32</code><em>COMPILED</em></div></div>
+  </section>;
 }
 
 function App() {
@@ -104,6 +176,7 @@ function App() {
   const [modal, setModal] = useState<{ action: Action; market: Market } | null>(null);
   const [stakeModal, setStakeModal] = useState<StakePool | null>(null);
   const [query, setQuery] = useState('');
+  const [receipt, setReceipt] = useState<DemoReceipt | null>(null);
 
   const totalSupplied = markets.reduce((sum, m) => sum + m.supplied * m.price, 0);
   const totalBorrowed = markets.reduce((sum, m) => sum + m.borrowed * m.price, 0);
@@ -121,6 +194,12 @@ function App() {
     } catch (error) {
       setWalletError(error instanceof Error ? error.message : '錢包連線失敗');
     }
+  };
+
+  const handleDemoSubmit = (nextReceipt: DemoReceipt) => {
+    setReceipt(nextReceipt);
+    setModal(null);
+    setStakeModal(null);
   };
 
   const nav = [
@@ -147,7 +226,7 @@ function App() {
       <main>
         <header>
           <button className="menu-button" onClick={() => setMobileNav(!mobileNav)} aria-label="開啟導覽"><Menu size={20} /></button>
-          <div className="status-pill"><i /> All systems operational</div>
+          <div className="status-pill"><i /> Demo environment operational</div>
           <div className="header-actions">
             <button className="icon-button"><Bell size={18} /></button>
             <button className={`wallet-button ${wallet ? 'connected' : ''}`} onClick={handleConnect}>
@@ -157,14 +236,18 @@ function App() {
         </header>
 
         <div className="content">
+          {receipt && <section className="receipt-banner" role="status"><ShieldCheck size={19} /><div><b>{receipt.title}</b><span>{receipt.detail}</span><code>{receipt.txId}</code></div><button className="icon-button" onClick={() => setReceipt(null)} aria-label="關閉結果"><X size={16} /></button></section>}
           <section className="hero-row">
-            <div><span className="eyebrow">CARDANO LIQUIDITY LAYER</span><h1>早安，Builder<span className="dot">.</span></h1><p>讓抵押品持續產生收益，讓流動性無縫移動。</p></div>
+            <div><span className="eyebrow">CARDANO LIQUIDITY LAYER</span><h1>{active === '總覽' ? '早安，Builder' : active}<span className="dot">.</span></h1><p>{active === '總覽' ? '讓抵押品持續產生收益，讓流動性無縫移動。' : 'CardFi 可操作展示環境 · 所有提交均為確定性模擬。'}</p></div>
             <div className="hero-actions">
               <button className="secondary" onClick={() => setModal({ action: 'Supply', market: markets[0] })}><ArrowDownLeft size={17} />供應資產</button>
               <button className="primary" onClick={() => setModal({ action: 'Borrow', market: markets[1] })}><ArrowUpRight size={17} />借入資產</button>
             </div>
           </section>
 
+          <WorkspacePanel active={active} wallet={wallet} onConnect={handleConnect} onAction={(action, market) => setModal({ action, market })} onStake={() => setStakeModal(cardFiPool)} />
+
+          <div className={`overview-content ${active === '總覽' ? '' : 'hidden'}`}>
           <section className="stat-grid">
             <article className="stat-card"><div className="stat-title"><span>總供應量</span><CircleDollarSign size={18} /></div><strong>{compactUsd(totalSupplied)}</strong><div className="stat-foot"><span className="positive">↗ 8.4%</span><small>過去 30 天</small><Sparkline color="#15d39a" /></div></article>
             <article className="stat-card"><div className="stat-title"><span>總借款量</span><CreditCard size={18} /></div><strong>{compactUsd(totalBorrowed)}</strong><div className="stat-foot"><span className="positive">↗ 12.1%</span><small>過去 30 天</small><Sparkline color="#83a7ff" /></div></article>
@@ -231,13 +314,14 @@ function App() {
               <button onClick={() => setActive('Vault Hooks')}>探索 Hooks <ArrowUpRight size={16} /></button>
             </article>
           </section>
+          </div>
 
-          <footer><span>CardFi Testnet Preview · v0.1.0</span><div><a href="#risk">風險揭露</a><a href="#terms">條款</a><a href="#github">GitHub</a></div></footer>
+          <footer><span>CardFi Interactive Showcase · v0.2.0 · Deterministic demo data</span><div><a href="#risk">風險揭露</a><a href="#terms">條款</a><a href="https://github.com/doki03164/CARDFI">GitHub</a></div></footer>
         </div>
       </main>
       {mobileNav && <div className="nav-backdrop" onClick={() => setMobileNav(false)} />}
-      {modal && <ActionModal action={modal.action} market={modal.market} onClose={() => setModal(null)} />}
-      {stakeModal && <StakeModal pool={stakeModal} onClose={() => setStakeModal(null)} />}
+      {modal && <ActionModal action={modal.action} market={modal.market} onClose={() => setModal(null)} onSubmit={handleDemoSubmit} />}
+      {stakeModal && <StakeModal pool={stakeModal} onClose={() => setStakeModal(null)} onSubmit={handleDemoSubmit} />}
     </div>
   );
 }
