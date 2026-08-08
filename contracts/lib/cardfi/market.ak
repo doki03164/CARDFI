@@ -30,6 +30,9 @@ pub fn valid_action(
 
     types.Repay { amount, .. } -> amount > 0 && amount <= previous.borrowed
 
+    types.Liquidate { repay_amount, collateral_seized, .. } ->
+      repay_amount > 0 && repay_amount <= previous.borrowed && collateral_seized > 0
+
     types.FlashExecute { principal, fee_paid } ->
       principal > 0 && principal <= previous.supplied - previous.borrowed && fee_paid * 10_000 >= principal * previous.fee_bps
   }
@@ -52,6 +55,47 @@ pub fn valid_oracle_borrow(
         interval.between(oracle.valid_from, oracle.valid_until)
           |> interval.includes(validity_range),
         amount * 10_000 * oracle.price_denominator <= collateral_amount * oracle.price_numerator * ltv_bps,
+      }
+
+    _ -> True
+  }
+}
+
+/// Validate an under-collateralized position and bound the liquidator's repay
+/// and seizure amounts. Exact rational inequalities avoid rounding ambiguity.
+pub fn valid_liquidation(
+  action: types.MarketAction,
+  position: types.PositionDatum,
+  oracle: types.OracleDatum,
+  validity_range: Interval,
+  liquidation_threshold_bps: Int,
+  close_factor_bps: Int,
+  liquidation_bonus_bps: Int,
+) -> Bool {
+  when action is {
+    types.Liquidate { repay_amount, collateral_seized, .. } -> and {
+        oracle.price_numerator > 0,
+        oracle.price_denominator > 0,
+        oracle.valid_from < oracle.valid_until,
+        oracle.sequence >= 0,
+        interval.between(oracle.valid_from, oracle.valid_until)
+          |> interval.includes(validity_range),
+        liquidation_threshold_bps > 0,
+        liquidation_threshold_bps < 10_000,
+        close_factor_bps > 0,
+        close_factor_bps <= 10_000,
+        liquidation_bonus_bps >= 0,
+        liquidation_bonus_bps < 10_000,
+        position.debt_amount > 0,
+        // Strictly below the liquidation threshold.
+        position.debt_amount * 10_000 * oracle.price_denominator > position.collateral_amount * oracle.price_numerator * liquidation_threshold_bps,
+        repay_amount <= position.debt_amount,
+        repay_amount * 10_000 <= position.debt_amount * close_factor_bps,
+        collateral_seized <= position.collateral_amount,
+        // Seized collateral value cannot exceed repaid debt plus bonus.
+        collateral_seized * oracle.price_numerator * 10_000 <= repay_amount * oracle.price_denominator * (
+          10_000 + liquidation_bonus_bps
+        ),
       }
 
     _ -> True
@@ -92,6 +136,13 @@ pub fn next_state(
         nonce: previous.nonce + 1,
       }
 
+    types.Liquidate { repay_amount, .. } ->
+      types.MarketDatum {
+        ..previous,
+        borrowed: previous.borrowed - repay_amount,
+        nonce: previous.nonce + 1,
+      }
+
     types.FlashExecute { fee_paid, .. } ->
       types.MarketDatum {
         ..previous,
@@ -110,6 +161,7 @@ pub fn pool_delta(action: types.MarketAction) -> Int {
     types.Withdraw { amount } -> 0 - amount
     types.Borrow { amount, .. } -> 0 - amount
     types.Repay { amount, .. } -> amount
+    types.Liquidate { repay_amount, .. } -> repay_amount
     types.FlashExecute { fee_paid, .. } -> fee_paid
   }
 }
@@ -137,6 +189,15 @@ pub fn valid_position_sync(
         next.owner == previous.owner,
         next.collateral_amount == previous.collateral_amount,
         next.debt_amount == previous.debt_amount - amount,
+        next.nonce == previous.nonce + 1,
+      }
+
+    types.Liquidate { repay_amount, collateral_seized, .. } -> and {
+        repay_amount <= previous.debt_amount,
+        collateral_seized <= previous.collateral_amount,
+        next.owner == previous.owner,
+        next.collateral_amount == previous.collateral_amount - collateral_seized,
+        next.debt_amount == previous.debt_amount - repay_amount,
         next.nonce == previous.nonce + 1,
       }
 
@@ -209,6 +270,14 @@ const oracle_fixture: types.OracleDatum =
     sequence: 8,
   }
 
+const liquidation_position: types.PositionDatum =
+  types.PositionDatum {
+    owner: #"11111111111111111111111111111111111111111111111111111111",
+    collateral_amount: 100_000,
+    debt_amount: 100_000,
+    nonce: 3,
+  }
+
 test fresh_oracle_borrow_passes() {
   valid_oracle_borrow(
     types.Borrow {
@@ -245,6 +314,100 @@ test stale_oracle_borrow_fails() {
     },
     oracle_fixture,
     interval.between(2_100, 2_200),
+  )
+}
+
+test undercollateralized_partial_liquidation_passes() {
+  let action = types.Liquidate {
+    repay_amount: 50_000,
+    collateral_seized: 52_500,
+    position_name: #"01",
+  }
+  valid_liquidation(
+    action,
+    liquidation_position,
+    oracle_fixture,
+    interval.between(1_200, 1_300),
+    8_000,
+    5_000,
+    500,
+  ) && valid_position_sync(
+    action,
+    liquidation_position,
+    types.PositionDatum {
+      ..liquidation_position,
+      collateral_amount: 47_500,
+      debt_amount: 50_000,
+      nonce: 4,
+    },
+  ) && next_state(fixture, action) == types.MarketDatum {
+    ..fixture,
+    borrowed: 350_000,
+    nonce: 5,
+  } && pool_delta(action) == 50_000
+}
+
+test healthy_position_liquidation_fails() {
+  !valid_liquidation(
+    types.Liquidate {
+      repay_amount: 50_000,
+      collateral_seized: 52_500,
+      position_name: #"01",
+    },
+    types.PositionDatum { ..liquidation_position, collateral_amount: 200_000 },
+    oracle_fixture,
+    interval.between(1_200, 1_300),
+    8_000,
+    5_000,
+    500,
+  )
+}
+
+test liquidation_close_factor_is_enforced() {
+  !valid_liquidation(
+    types.Liquidate {
+      repay_amount: 50_001,
+      collateral_seized: 52_500,
+      position_name: #"01",
+    },
+    liquidation_position,
+    oracle_fixture,
+    interval.between(1_200, 1_300),
+    8_000,
+    5_000,
+    500,
+  )
+}
+
+test excessive_liquidation_seizure_fails() {
+  !valid_liquidation(
+    types.Liquidate {
+      repay_amount: 50_000,
+      collateral_seized: 52_501,
+      position_name: #"01",
+    },
+    liquidation_position,
+    oracle_fixture,
+    interval.between(1_200, 1_300),
+    8_000,
+    5_000,
+    500,
+  )
+}
+
+test stale_oracle_liquidation_fails() {
+  !valid_liquidation(
+    types.Liquidate {
+      repay_amount: 50_000,
+      collateral_seized: 52_500,
+      position_name: #"01",
+    },
+    liquidation_position,
+    oracle_fixture,
+    interval.between(2_100, 2_200),
+    8_000,
+    5_000,
+    500,
   )
 }
 

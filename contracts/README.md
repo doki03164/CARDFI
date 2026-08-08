@@ -18,6 +18,9 @@ The current `market.market.spend` validator implements transaction-bound transit
 - oracle NFT reference input, finite price validity window and rational LTV check
 - borrow/repay binding to exactly one consumed and recreated position NFT
 - position-owner signature and exact debt/nonce synchronization
+- immutable maximum-LTV parameter enforced above the borrow redeemer value
+- permissionless liquidation for positions below the oracle-priced threshold
+- close-factor limit and exact liquidation-bonus collateral seizure ceiling
 
 The `oracle.oracle.spend` validator adds a publisher-signed oracle state thread with:
 
@@ -35,7 +38,8 @@ The `position.position.spend` validator adds the ownership layer with:
 - immutable owner and monotonic nonce
 - non-negative collateral and debt state
 - non-zero debt adjustment bound to exactly one market shard transition
-- exact opposite market-asset movement for borrow and repay
+- exact opposite market-asset movement for borrow, repay and liquidation
+- permissionless liquidation independently checked against the oracle and fixed risk parameters
 
 The generated CIP-57 blueprint is committed as `plutus.json` so off-chain transaction builders can consume its schema and compiled code.
 
@@ -54,17 +58,19 @@ Expected tests include:
 - atomic flash fee/reserve transition
 - exact market-position borrow and repay synchronization
 - rejection of debt changes without matching market asset movement
+- valid under-collateralized partial liquidation
+- rejection of healthy, stale-price, over-close-factor and excessive-seizure liquidations
 
 ## Current compiled validator
 
 - Blueprint title: `market.market.spend`
 - Plutus version: `v3`
-- Market hash: `4a869d3a7272621dac3ff33df49cd6b2d827698004d663504a476f5c` — 4,159 bytes
+- Market hash: `c1c09d29a0a0d188131f8ac375a4700b56fe70f4a77de43a5dcbab12` — 5,385 bytes
 - Oracle hash: `fd590b7ba645b3cbe6524e12a528d1cb1507a3da28144da4c3a4191f` — 1,715 bytes
-- Position hash: `1322346597bb3f2fd937682ea6eac9581958dc13ae9548739425db8b` — 1,612 bytes
+- Position hash: `baa8bfb448f6e2830917d5eb09be628a7f274859cbbca42fd42c6b21` — 3,233 bytes
 
 The hash changes whenever the validator or compiler output changes. CI rebuilds the blueprint on every push.
 
 ## Mainnet gates still required
 
-Before Preprod deployment it must still add liquidation close-factor logic, governance parameter bindings, publisher key rotation and full transaction-level scenario tests.
+Before Preprod deployment it must still add a governance state thread for controlled parameter upgrades, publisher key rotation and full transaction-level scenario tests.

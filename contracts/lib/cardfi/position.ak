@@ -20,6 +20,14 @@ pub fn next_state(
         debt_amount: previous.debt_amount + debt_delta,
         nonce: previous.nonce + 1,
       }
+
+    types.LiquidatePosition { repay_amount, collateral_seized } ->
+      types.PositionDatum {
+        ..previous,
+        collateral_amount: previous.collateral_amount - collateral_seized,
+        debt_amount: previous.debt_amount - repay_amount,
+        nonce: previous.nonce + 1,
+      }
   }
 }
 
@@ -68,6 +76,21 @@ test negative_collateral_position_fails() {
     types.Adjust { collateral_delta: -1_000_001, debt_delta: 0 },
   )
   !valid_state(next)
+}
+
+test liquidation_position_transition_is_exact() {
+  next_state(
+    fixture,
+    types.LiquidatePosition {
+      repay_amount: 100_000,
+      collateral_seized: 120_000,
+    },
+  ) == types.PositionDatum {
+    ..fixture,
+    collateral_amount: 880_000,
+    debt_amount: 200_000,
+    nonce: 3,
+  }
 }
 
 const market_fixture: types.MarketDatum =

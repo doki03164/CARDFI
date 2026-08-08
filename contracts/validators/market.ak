@@ -16,6 +16,10 @@ validator market(
   oracle_policy: PolicyId,
   oracle_name: AssetName,
   position_policy: PolicyId,
+  max_ltv_bps: Int,
+  liquidation_threshold_bps: Int,
+  close_factor_bps: Int,
+  liquidation_bonus_bps: Int,
 ) {
   spend(
     datum: Option<types.MarketDatum>,
@@ -43,7 +47,7 @@ validator market(
     expect next: types.MarketDatum = next_data
 
     let oracle_is_valid = when redeemer is {
-      types.Borrow { .. } -> {
+      types.Borrow { ltv_bps, .. } -> {
         expect [oracle_input] = tx.reference_inputs
           |> list.filter(
               fn(input) {
@@ -52,7 +56,11 @@ validator market(
             )
         expect transaction.InlineDatum(oracle_data) = oracle_input.output.datum
         expect oracle: types.OracleDatum = oracle_data
-        market_logic.valid_oracle_borrow(redeemer, oracle, tx.validity_range)
+        ltv_bps <= max_ltv_bps && market_logic.valid_oracle_borrow(
+          redeemer,
+          oracle,
+          tx.validity_range,
+        )
       }
 
       _ -> True
@@ -125,6 +133,57 @@ validator market(
             redeemer,
             position_previous,
             position_next,
+          ),
+        }
+      }
+
+      types.Liquidate { position_name, .. } -> {
+        expect [position_input] = tx.inputs
+          |> list.filter(
+              fn(input) {
+                assets.has_nft(
+                  input.output.value,
+                  position_policy,
+                  position_name,
+                )
+              },
+            )
+        expect transaction.InlineDatum(position_data) = position_input.output.datum
+        expect position_previous: types.PositionDatum = position_data
+        expect [position_output] = tx.outputs
+          |> list.filter(
+              fn(output) {
+                output.address == position_input.output.address && assets.has_nft(
+                  output.value,
+                  position_policy,
+                  position_name,
+                )
+              },
+            )
+        expect transaction.InlineDatum(position_next_data) = position_output.datum
+        expect position_next: types.PositionDatum = position_next_data
+        expect [oracle_input] = tx.reference_inputs
+          |> list.filter(
+              fn(input) {
+                assets.has_nft(input.output.value, oracle_policy, oracle_name)
+              },
+            )
+        expect transaction.InlineDatum(oracle_data) = oracle_input.output.datum
+        expect oracle: types.OracleDatum = oracle_data
+        and {
+          market_logic.valid_position_sync(
+            redeemer,
+            position_previous,
+            position_next,
+          ),
+          market_logic.valid_liquidation(
+            redeemer,
+            position_previous,
+            oracle,
+            tx.validity_range,
+            liquidation_threshold_bps,
+            close_factor_bps,
+            liquidation_bonus_bps,
           ),
         }
       }

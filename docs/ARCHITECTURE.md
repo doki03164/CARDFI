@@ -35,12 +35,13 @@ The UI, transaction builder, accounting and risk disclosures must never merge th
 2. Borrowing cannot exceed available liquidity or collateral LTV.
 3. A flash transaction must recreate the consumed pool value with principal plus fee.
 4. Every borrow/repay consumes and recreates exactly one named position NFT and one market shard; both validators independently enforce the same debt delta and opposite asset flow.
-5. Liquidation uses a fresh independent oracle input, never a same-transaction DEX spot price.
-6. A hook is bound to an approved script hash, asset allowlist, maximum slippage and expiry.
+5. Liquidation uses a fresh independent oracle input, never a same-transaction DEX spot price; only positions strictly below the configured threshold are eligible.
+6. Liquidation repayment is capped by the configured close factor and seized collateral by the oracle-valued repayment plus configured bonus.
+7. A hook is bound to an approved script hash, asset allowlist, maximum slippage and expiry.
 
-The compiled market validator now enforces items 1–3 at the shard transition layer: exactly one continuing output at the same script address, NFT preservation, exact asset delta, exact next datum and monotonic nonce. Oracle-signed collateral valuation remains the next contract gate.
+The compiled market and position validators now enforce items 1–6: unique continuing outputs, NFT preservation, exact asset and datum transitions, oracle-priced borrowing, atomic flash repayment, synchronized position debt and bounded liquidation.
 
-Oracle valuation is supplied through a unique-NFT reference input whose publisher-signed state thread enforces rational prices, sequence increments and finite validity windows. The market validator binds each borrow/repay redeemer to a named position NFT, owner signature and exact debt transition. The position validator independently requires the corresponding market shard, datum transition and opposite market-asset delta whenever debt changes. Liquidation is the next contract gate.
+Oracle valuation is supplied through a unique-NFT reference input whose publisher-signed state thread enforces rational prices, sequence increments and finite validity windows. The market validator binds each borrow/repay redeemer to a named position NFT, owner signature and exact debt transition. The position validator independently requires the corresponding market shard, datum transition and opposite market-asset delta whenever debt changes. Permissionless liquidation now validates oracle freshness, health threshold, close factor, liquidation bonus, collateral seizure, debt reduction and market repayment from both scripts. A governance state thread and transaction-level integration suite are the next contract gates.
 
 ## Production services
 

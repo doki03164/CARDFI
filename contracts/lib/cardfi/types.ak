@@ -21,6 +21,11 @@ pub type MarketAction {
     position_name: AssetName,
   }
   Repay { amount: Int, position_name: AssetName }
+  Liquidate {
+    repay_amount: Int,
+    collateral_seized: Int,
+    position_name: AssetName,
+  }
   FlashExecute { principal: Int, fee_paid: Int }
 }
 
@@ -43,4 +48,5 @@ pub type PositionDatum {
 
 pub type PositionAction {
   Adjust { collateral_delta: Int, debt_delta: Int }
+  LiquidatePosition { repay_amount: Int, collateral_seized: Int }
 }
