@@ -56,6 +56,7 @@ infra/stake-pool/      CardFi SPO topology, services, metadata and runbook
 docs/ARCHITECTURE.md  System design and production boundary
 CardFi_*.md           Whitepaper, pitch and Catalyst copy
 docs/SHOWCASE_RUNBOOK.md  Investor/Catalyst demonstration sequence
+docs/FUNDING_APPLICATION_GUIDE_zh-TW.md  Catalyst and treasury funding preparation
 ```
 
 ## Current stage
