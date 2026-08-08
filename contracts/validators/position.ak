@@ -4,13 +4,16 @@ use cardano/transaction.{OutputReference, Transaction}
 use cardfi/position as position_logic
 use cardfi/types
 
-/// Owner-controlled position state thread. Market/debt synchronization is
-/// intentionally separated from this ownership and value-preservation layer.
+/// Owner-controlled position state thread with atomic market/debt synchronization.
 validator position(
   position_policy: PolicyId,
   position_name: AssetName,
   collateral_policy: PolicyId,
   collateral_name: AssetName,
+  market_policy: PolicyId,
+  market_asset: AssetName,
+  shard_policy: PolicyId,
+  shard_name: AssetName,
 ) {
   spend(
     datum: Option<types.PositionDatum>,
@@ -39,7 +42,48 @@ validator position(
     let expected = position_logic.next_state(previous, redeemer)
 
     when redeemer is {
-      types.Adjust { collateral_delta, .. } -> and {
+      types.Adjust { collateral_delta, debt_delta } -> {
+        let market_is_synced = if debt_delta == 0 {
+          True
+        } else {
+          expect [market_input] = tx.inputs
+            |> list.filter(
+                fn(input) {
+                  assets.has_nft(input.output.value, shard_policy, shard_name)
+                },
+              )
+          expect transaction.InlineDatum(market_data) = market_input.output.datum
+          expect market_previous: types.MarketDatum = market_data
+          expect [market_output] = tx.outputs
+            |> list.filter(
+                fn(output) {
+                  output.address == market_input.output.address && assets.has_nft(
+                    output.value,
+                    shard_policy,
+                    shard_name,
+                  )
+                },
+              )
+          expect transaction.InlineDatum(market_next_data) = market_output.datum
+          expect market_next: types.MarketDatum = market_next_data
+          let market_asset_delta = assets.quantity_of(
+            market_output.value,
+            market_policy,
+            market_asset,
+          ) - assets.quantity_of(
+            market_input.output.value,
+            market_policy,
+            market_asset,
+          )
+          position_logic.valid_market_sync(
+            market_previous,
+            market_next,
+            debt_delta,
+            market_asset_delta,
+          )
+        }
+
+        and {
           list.has(tx.extra_signatories, previous.owner),
           assets.has_nft(own_input.output.value, position_policy, position_name),
           assets.quantity_of(
@@ -55,7 +99,9 @@ validator position(
           next.owner == previous.owner,
           position_logic.valid_state(previous),
           position_logic.valid_state(next),
+          market_is_synced,
         }
+      }
     }
   }
 

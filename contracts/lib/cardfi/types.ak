@@ -1,4 +1,5 @@
 use aiken/crypto.{VerificationKeyHash}
+use cardano/assets.{AssetName}
 
 pub type MarketDatum {
   MarketDatum {
@@ -13,8 +14,13 @@ pub type MarketDatum {
 pub type MarketAction {
   Supply { amount: Int }
   Withdraw { amount: Int }
-  Borrow { amount: Int, collateral_amount: Int, ltv_bps: Int }
-  Repay { amount: Int }
+  Borrow {
+    amount: Int,
+    collateral_amount: Int,
+    ltv_bps: Int,
+    position_name: AssetName,
+  }
+  Repay { amount: Int, position_name: AssetName }
   FlashExecute { principal: Int, fee_paid: Int }
 }
 

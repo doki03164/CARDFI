@@ -34,12 +34,13 @@ The UI, transaction builder, accounting and risk disclosures must never merge th
 1. Every market transition preserves the shard identity NFT and valid datum schema.
 2. Borrowing cannot exceed available liquidity or collateral LTV.
 3. A flash transaction must recreate the consumed pool value with principal plus fee.
-4. Liquidation uses a fresh independent oracle input, never a same-transaction DEX spot price.
-5. A hook is bound to an approved script hash, asset allowlist, maximum slippage and expiry.
+4. Every borrow/repay consumes and recreates exactly one named position NFT and one market shard; both validators independently enforce the same debt delta and opposite asset flow.
+5. Liquidation uses a fresh independent oracle input, never a same-transaction DEX spot price.
+6. A hook is bound to an approved script hash, asset allowlist, maximum slippage and expiry.
 
 The compiled market validator now enforces items 1–3 at the shard transition layer: exactly one continuing output at the same script address, NFT preservation, exact asset delta, exact next datum and monotonic nonce. Oracle-signed collateral valuation remains the next contract gate.
 
-Oracle valuation is now supplied through a unique-NFT reference input whose publisher-signed state thread enforces rational prices, sequence increments and finite validity windows. A separate position validator binds collateral changes to the owner's verification-key signature and preserves a unique position NFT. Atomic debt synchronization and liquidation remain the next gates.
+Oracle valuation is supplied through a unique-NFT reference input whose publisher-signed state thread enforces rational prices, sequence increments and finite validity windows. The market validator binds each borrow/repay redeemer to a named position NFT, owner signature and exact debt transition. The position validator independently requires the corresponding market shard, datum transition and opposite market-asset delta whenever debt changes. Liquidation is the next contract gate.
 
 ## Production services
 

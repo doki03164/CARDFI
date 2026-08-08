@@ -15,6 +15,7 @@ validator market(
   shard_name: AssetName,
   oracle_policy: PolicyId,
   oracle_name: AssetName,
+  position_policy: PolicyId,
 ) {
   spend(
     datum: Option<types.MarketDatum>,
@@ -57,6 +58,80 @@ validator market(
       _ -> True
     }
 
+    let position_is_synced = when redeemer is {
+      types.Borrow { position_name, .. } -> {
+        expect [position_input] = tx.inputs
+          |> list.filter(
+              fn(input) {
+                assets.has_nft(
+                  input.output.value,
+                  position_policy,
+                  position_name,
+                )
+              },
+            )
+        expect transaction.InlineDatum(position_data) = position_input.output.datum
+        expect position_previous: types.PositionDatum = position_data
+        expect [position_output] = tx.outputs
+          |> list.filter(
+              fn(output) {
+                output.address == position_input.output.address && assets.has_nft(
+                  output.value,
+                  position_policy,
+                  position_name,
+                )
+              },
+            )
+        expect transaction.InlineDatum(position_next_data) = position_output.datum
+        expect position_next: types.PositionDatum = position_next_data
+        and {
+          list.has(tx.extra_signatories, position_previous.owner),
+          market_logic.valid_position_sync(
+            redeemer,
+            position_previous,
+            position_next,
+          ),
+        }
+      }
+
+      types.Repay { position_name, .. } -> {
+        expect [position_input] = tx.inputs
+          |> list.filter(
+              fn(input) {
+                assets.has_nft(
+                  input.output.value,
+                  position_policy,
+                  position_name,
+                )
+              },
+            )
+        expect transaction.InlineDatum(position_data) = position_input.output.datum
+        expect position_previous: types.PositionDatum = position_data
+        expect [position_output] = tx.outputs
+          |> list.filter(
+              fn(output) {
+                output.address == position_input.output.address && assets.has_nft(
+                  output.value,
+                  position_policy,
+                  position_name,
+                )
+              },
+            )
+        expect transaction.InlineDatum(position_next_data) = position_output.datum
+        expect position_next: types.PositionDatum = position_next_data
+        and {
+          list.has(tx.extra_signatories, position_previous.owner),
+          market_logic.valid_position_sync(
+            redeemer,
+            position_previous,
+            position_next,
+          ),
+        }
+      }
+
+      _ -> True
+    }
+
     and {
       assets.has_nft(own_input.output.value, shard_policy, shard_name),
       assets.quantity_of(continuing_output.value, market_policy, market_asset) == assets.quantity_of(
@@ -69,6 +144,7 @@ validator market(
       market_logic.valid_state(next),
       next == market_logic.next_state(previous, redeemer),
       oracle_is_valid,
+      position_is_synced,
     }
   }
 

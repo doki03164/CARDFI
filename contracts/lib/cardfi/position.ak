@@ -23,6 +23,24 @@ pub fn next_state(
   }
 }
 
+/// A debt adjustment is valid only when the market shard advances by the same
+/// debt delta and the underlying market asset moves in the opposite direction.
+pub fn valid_market_sync(
+  previous: types.MarketDatum,
+  next: types.MarketDatum,
+  debt_delta: Int,
+  market_asset_delta: Int,
+) -> Bool {
+  and {
+    next.supplied == previous.supplied,
+    next.borrowed == previous.borrowed + debt_delta,
+    next.reserve == previous.reserve,
+    next.fee_bps == previous.fee_bps,
+    next.nonce == previous.nonce + 1,
+    market_asset_delta == 0 - debt_delta,
+  }
+}
+
 const fixture: types.PositionDatum =
   types.PositionDatum {
     owner: #"11111111111111111111111111111111111111111111111111111111",
@@ -50,4 +68,31 @@ test negative_collateral_position_fails() {
     types.Adjust { collateral_delta: -1_000_001, debt_delta: 0 },
   )
   !valid_state(next)
+}
+
+const market_fixture: types.MarketDatum =
+  types.MarketDatum {
+    supplied: 1_000_000,
+    borrowed: 300_000,
+    reserve: 10_000,
+    fee_bps: 7,
+    nonce: 4,
+  }
+
+test market_sync_matches_debt_increase_and_asset_outflow() {
+  valid_market_sync(
+    market_fixture,
+    types.MarketDatum { ..market_fixture, borrowed: 400_000, nonce: 5 },
+    100_000,
+    -100_000,
+  )
+}
+
+test market_sync_rejects_repay_without_asset_inflow() {
+  !valid_market_sync(
+    market_fixture,
+    types.MarketDatum { ..market_fixture, borrowed: 250_000, nonce: 5 },
+    -50_000,
+    0,
+  )
 }
