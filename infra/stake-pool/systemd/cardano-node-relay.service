@@ -1,0 +1,30 @@
+[Unit]
+Description=CardFi Cardano Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cardano
+Group=cardano
+RuntimeDirectory=cardano
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/bin/cardano-node run \
+  --config /etc/cardano/config.json \
+  --topology /etc/cardano/relay-topology.json \
+  --database-path /var/lib/cardano/db \
+  --socket-path /run/cardano/node.socket \
+  --host-addr 0.0.0.0 \
+  --port 3001
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cardano /run/cardano
+UMask=0077
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

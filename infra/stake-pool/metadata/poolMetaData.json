@@ -1,0 +1,6 @@
+{
+  "name": "CardFi Native Stake Pool",
+  "description": "CardFi-operated Cardano stake pool supporting native ADA staking and the CardFi ecosystem.",
+  "ticker": "CFI",
+  "homepage": "https://TARGET_DOMAIN/stake"
+}

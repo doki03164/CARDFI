@@ -1,0 +1,18 @@
+{
+  "localRoots": [
+    {
+      "accessPoints": [
+        { "address": "HOST_BP_PRIVATE", "port": 6000 }
+      ],
+      "advertise": false,
+      "hotValency": 1,
+      "warmValency": 1,
+      "trustable": true
+    }
+  ],
+  "bootstrapPeers": [
+    { "address": "PREPROD_OR_MAINNET_BOOTSTRAP", "port": 3001 }
+  ],
+  "publicRoots": [],
+  "useLedgerAfterSlot": 0
+}

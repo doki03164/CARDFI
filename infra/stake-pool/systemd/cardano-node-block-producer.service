@@ -1,0 +1,33 @@
+[Unit]
+Description=CardFi Cardano Block Producer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cardano
+Group=cardano
+RuntimeDirectory=cardano
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/bin/cardano-node run \
+  --config /etc/cardano/config.json \
+  --topology /etc/cardano/block-producer-topology.json \
+  --database-path /var/lib/cardano/db \
+  --socket-path /run/cardano/node.socket \
+  --host-addr 0.0.0.0 \
+  --port 6000 \
+  --shelley-kes-key /run/secrets/kes.skey \
+  --shelley-vrf-key /run/secrets/vrf.skey \
+  --shelley-operational-certificate /run/secrets/node.cert
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cardano /run/cardano
+UMask=0077
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

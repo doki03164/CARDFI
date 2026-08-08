@@ -1,0 +1,17 @@
+{
+  "localRoots": [
+    {
+      "accessPoints": [
+        { "address": "HOST_RELAY_1", "port": 3001 },
+        { "address": "HOST_RELAY_2", "port": 3001 }
+      ],
+      "advertise": false,
+      "hotValency": 2,
+      "warmValency": 2,
+      "trustable": false
+    }
+  ],
+  "bootstrapPeers": null,
+  "publicRoots": [],
+  "useLedgerAfterSlot": -1
+}
