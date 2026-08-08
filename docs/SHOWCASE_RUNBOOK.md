@@ -1,5 +1,7 @@
 # CardFi Interactive Showcase Runbook
 
+> The showcase supports Traditional Chinese and English. Use the `EN / 繁中` control in the header. The complete English whitepaper, pitch deck, and Catalyst proposal are available at `CardFi_Light_Whitepaper_Pitch_Deck_Catalyst_Proposal_EN.md`.
+
 ## Start and verify
 
 ```powershell

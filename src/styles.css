@@ -32,6 +32,8 @@ header { height: 68px; border-bottom: 1px solid var(--line); display: flex; alig
 .header-actions, .hero-actions { display: flex; gap: 9px; align-items: center; }
 .icon-button { width: 37px; height: 37px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); cursor: pointer; }
 .wallet-button, .primary, .secondary { height: 38px; padding: 0 15px; border: 0; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; font-weight: 700; cursor: pointer; transition: transform .15s, filter .15s; }
+.language-button { height: 37px; min-width: 58px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); color: #9aada6; font: 500 9px 'DM Mono'; cursor: pointer; }
+.language-button:hover { color: var(--green); border-color: rgba(21,211,154,.24); }
 .wallet-button:hover, .primary:hover, .secondary:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .wallet-button { background: var(--green); color: #03110d; }
 .wallet-button.connected { background: rgba(21,211,154,.11); color: var(--green); border: 1px solid rgba(21,211,154,.25); font-family: 'DM Mono'; }
@@ -167,7 +169,7 @@ footer div { display: flex; gap: 16px; } footer a { color: inherit; text-decorat
   .sidebar { position: fixed; left: -260px; transition: left .2s; width: 244px; }.sidebar.open { left: 0; }
   .nav-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 15; }
   .menu-button { display: grid; place-items: center; }.status-pill { display: none; }
-  header { padding: 0 18px; }.content { padding: 28px 18px 18px; }
+  header { padding: 0 18px; }.content { padding: 28px 18px 18px; }.language-button { min-width: 48px; padding: 0 8px; }
   .hero-row { display: block; }.hero-actions { margin-top: 20px; }.hero-actions button { flex: 1; }
   .stat-grid { grid-template-columns: 1fr; }.stat-card { min-height: 125px; }
   .feature-card { grid-template-columns: auto 1fr; }.feature-card > button { grid-column: 2; justify-self: start; }
