@@ -17,9 +17,8 @@ validator position(
   shard_name: AssetName,
   oracle_policy: PolicyId,
   oracle_name: AssetName,
-  liquidation_threshold_bps: Int,
-  close_factor_bps: Int,
-  liquidation_bonus_bps: Int,
+  governance_policy: PolicyId,
+  governance_name: AssetName,
 ) {
   spend(
     datum: Option<types.PositionDatum>,
@@ -44,6 +43,19 @@ validator position(
 
     expect transaction.InlineDatum(next_data) = continuing_output.datum
     expect next: types.PositionDatum = next_data
+
+    expect [governance_input] = tx.reference_inputs
+      |> list.filter(
+          fn(input) {
+            assets.has_nft(
+              input.output.value,
+              governance_policy,
+              governance_name,
+            )
+          },
+        )
+    expect transaction.InlineDatum(governance_data) = governance_input.output.datum
+    expect governance: types.GovernanceDatum = governance_data
 
     let expected = position_logic.next_state(previous, redeemer)
 
@@ -75,9 +87,9 @@ validator position(
           previous,
           oracle,
           tx.validity_range,
-          liquidation_threshold_bps,
-          close_factor_bps,
-          liquidation_bonus_bps,
+          governance.liquidation_threshold_bps,
+          governance.close_factor_bps,
+          governance.liquidation_bonus_bps,
         )
       }
 

@@ -16,10 +16,8 @@ validator market(
   oracle_policy: PolicyId,
   oracle_name: AssetName,
   position_policy: PolicyId,
-  max_ltv_bps: Int,
-  liquidation_threshold_bps: Int,
-  close_factor_bps: Int,
-  liquidation_bonus_bps: Int,
+  governance_policy: PolicyId,
+  governance_name: AssetName,
 ) {
   spend(
     datum: Option<types.MarketDatum>,
@@ -46,6 +44,19 @@ validator market(
     expect transaction.InlineDatum(next_data) = continuing_output.datum
     expect next: types.MarketDatum = next_data
 
+    expect [governance_input] = tx.reference_inputs
+      |> list.filter(
+          fn(input) {
+            assets.has_nft(
+              input.output.value,
+              governance_policy,
+              governance_name,
+            )
+          },
+        )
+    expect transaction.InlineDatum(governance_data) = governance_input.output.datum
+    expect governance: types.GovernanceDatum = governance_data
+
     let oracle_is_valid = when redeemer is {
       types.Borrow { ltv_bps, .. } -> {
         expect [oracle_input] = tx.reference_inputs
@@ -56,7 +67,7 @@ validator market(
             )
         expect transaction.InlineDatum(oracle_data) = oracle_input.output.datum
         expect oracle: types.OracleDatum = oracle_data
-        ltv_bps <= max_ltv_bps && market_logic.valid_oracle_borrow(
+        ltv_bps <= governance.max_ltv_bps && market_logic.valid_oracle_borrow(
           redeemer,
           oracle,
           tx.validity_range,
@@ -181,9 +192,9 @@ validator market(
             position_previous,
             oracle,
             tx.validity_range,
-            liquidation_threshold_bps,
-            close_factor_bps,
-            liquidation_bonus_bps,
+            governance.liquidation_threshold_bps,
+            governance.close_factor_bps,
+            governance.liquidation_bonus_bps,
           ),
         }
       }

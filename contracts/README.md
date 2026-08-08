@@ -29,6 +29,15 @@ The `oracle.oracle.spend` validator adds a publisher-signed oracle state thread 
 - positive rational price
 - monotonically advancing validity window
 - transaction validity range containment
+- publisher authorization resolved from the current Governance NFT datum
+
+The `governance.governance.spend` validator adds a protocol configuration state thread with:
+
+- unique Governance NFT preservation and monotonic sequence
+- bounded LTV, liquidation threshold, close factor and bonus parameters
+- admin-signed risk and Oracle publisher updates
+- two-key acceptance for admin rotation
+- prevention of hidden risk changes during admin rotation
 
 The `position.position.spend` validator adds the ownership layer with:
 
@@ -60,17 +69,20 @@ Expected tests include:
 - rejection of debt changes without matching market asset movement
 - valid under-collateralized partial liquidation
 - rejection of healthy, stale-price, over-close-factor and excessive-seizure liquidations
+- governed risk-parameter and Oracle publisher updates
+- rejection of invalid risk ordering and mixed admin/risk rotation
 
 ## Current compiled validator
 
 - Blueprint title: `market.market.spend`
 - Plutus version: `v3`
-- Market hash: `c1c09d29a0a0d188131f8ac375a4700b56fe70f4a77de43a5dcbab12` — 5,385 bytes
-- Oracle hash: `fd590b7ba645b3cbe6524e12a528d1cb1507a3da28144da4c3a4191f` — 1,715 bytes
-- Position hash: `baa8bfb448f6e2830917d5eb09be628a7f274859cbbca42fd42c6b21` — 3,233 bytes
+- Governance hash: `64b0d65a071a3d58052fec7dd569846c43dc4a81d53ad5822010de31` — 1,380 bytes
+- Market hash: `14c01b4906bbd2c76667d333a9d462ba859b3728651b4c315a413200` — 5,613 bytes
+- Oracle hash: `6651fbd68f654ba2eed21d6d19dceffcdf73f9930bb42bd93cf2a73f` — 1,926 bytes
+- Position hash: `1aa0889691276922f22c9dda9c7063da2f322ef4bfd4a3d4a8957f32` — 3,453 bytes
 
 The hash changes whenever the validator or compiler output changes. CI rebuilds the blueprint on every push.
 
 ## Mainnet gates still required
 
-Before Preprod deployment it must still add a governance state thread for controlled parameter upgrades, publisher key rotation and full transaction-level scenario tests.
+Before Preprod deployment it must still add delayed governance activation/multisig policy, full transaction-level scenario tests and deployment manifests.

@@ -12,6 +12,8 @@ flowchart LR
   X --> M[Market Shard Validators]
   M --> P[Position UTxOs]
   M --> O[Oracle Reference Inputs]
+  M --> G[Governance NFT Reference Input]
+  O --> G
   M --> H[Flash Executor / Vault Hooks]
   M --> T[Stake Controller]
 ```
@@ -41,7 +43,7 @@ The UI, transaction builder, accounting and risk disclosures must never merge th
 
 The compiled market and position validators now enforce items 1–6: unique continuing outputs, NFT preservation, exact asset and datum transitions, oracle-priced borrowing, atomic flash repayment, synchronized position debt and bounded liquidation.
 
-Oracle valuation is supplied through a unique-NFT reference input whose publisher-signed state thread enforces rational prices, sequence increments and finite validity windows. The market validator binds each borrow/repay redeemer to a named position NFT, owner signature and exact debt transition. The position validator independently requires the corresponding market shard, datum transition and opposite market-asset delta whenever debt changes. Permissionless liquidation now validates oracle freshness, health threshold, close factor, liquidation bonus, collateral seizure, debt reduction and market repayment from both scripts. A governance state thread and transaction-level integration suite are the next contract gates.
+Oracle valuation is supplied through a unique-NFT reference input whose publisher-signed state thread enforces rational prices, sequence increments and finite validity windows. The publisher key and protocol risk parameters are resolved from a unique Governance NFT reference datum. Its state validator requires current-admin authorization, bounded parameter ordering and dual-key acceptance when rotating the admin. The market validator binds each borrow/repay redeemer to a named position NFT, owner signature and exact debt transition. The position validator independently requires the corresponding market shard, datum transition and opposite market-asset delta whenever debt changes. Permissionless liquidation validates oracle freshness, governed health threshold, close factor, liquidation bonus, collateral seizure, debt reduction and market repayment from both scripts. Delayed/multisig governance and transaction-level integration are the next contract gates.
 
 ## Production services
 

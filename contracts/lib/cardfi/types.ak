@@ -50,3 +50,19 @@ pub type PositionAction {
   Adjust { collateral_delta: Int, debt_delta: Int }
   LiquidatePosition { repay_amount: Int, collateral_seized: Int }
 }
+
+/// Protocol risk configuration authenticated by the unique Governance NFT.
+pub type GovernanceDatum {
+  admin: VerificationKeyHash,
+  oracle_publisher: VerificationKeyHash,
+  max_ltv_bps: Int,
+  liquidation_threshold_bps: Int,
+  close_factor_bps: Int,
+  liquidation_bonus_bps: Int,
+  sequence: Int,
+}
+
+pub type GovernanceAction {
+  UpdateParameters
+  RotateAdmin { new_admin: VerificationKeyHash }
+}
