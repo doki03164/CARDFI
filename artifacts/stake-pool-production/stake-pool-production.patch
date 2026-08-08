@@ -1,0 +1,1186 @@
+diff --git a/.gitignore b/.gitignore
+index fe4ae86..e3663f9 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -9,3 +9,11 @@ vite.config.d.ts
+ .env.*
+ !*.env.example
+ contracts/build/
++infra/stake-pool/build/
++infra/stake-pool/private/
++infra/stake-pool/pool.env
++*.skey
++*.mnemonic
++*.age
++.tmp-config-verify-*/
++.tmp-artifact-verify-*/
+diff --git a/README.md b/README.md
+index f6f6a68..1b36537 100644
+--- a/README.md
++++ b/README.md
+@@ -37,7 +37,7 @@ npm.cmd run dev
+ | Markets | Supply、Borrow、利用率、動態利率 | 互動式模擬 |
+ | Positions | LTV、Health Factor、抵押與債務狀態 | 互動式模擬 |
+ | Flash Lab | 原子閃電執行、費用與收據 | 互動式模擬 |
+-| Native Staking | 委託至 CardFi 自營 `[CFI]` 鏈上質押池 | 互動式模擬 + SPO 部署模板 |
++| Native Staking | 委託至 CardFi 自營 `[CFI]` 鏈上質押池 | 互動式模擬 + Preprod 正式部署套件 |
+ | Vault Hooks | Leveraged Farming、Self-Repaying Loan、Liquidation Shield | API/流程展示 |
+ | Governance | 參數治理、Oracle key rotation | 合約與 UI 展示 |
+ | Wallet | CIP-30 錢包偵測與連線 | Adapter 已完成 |
+@@ -48,6 +48,10 @@ npm.cmd run dev
+ 1. **借貸抵押（Collateral）**：資產鎖入 CardFi 借貸部位，用於計算 LTV 與 Health Factor。
+ 2. **Cardano 原生鏈上質押（Native PoS Delegation）**：CardFi 建置並營運自己的 `[CFI]` Stake Pool；用戶透過 stake credential 委託參與 Cardano PoS。正式產品將以 delegation/stake-right 保留架構，避免把 PoS 委託收益錯寫成協議保證收益。
+ 
++### `[CFI]` 正式質押池優先軌
++
++`infra/stake-pool/` 已包含 cardano-node 11.0.1 pinned checksums、官方 Preprod config 產生器、1 BP + 2 Relay 安裝、離線 key ceremony、KES/op-cert、池註冊 build/sign/submit 分離流程、健康檢查、Prometheus 告警及加密備份。實際鏈上狀態仍以 `deployment/preprod-manifest.json` 為準；主機、DNS、金鑰與註冊尚未偽裝成已完成。
++
+ ## 系統架構
+ 
+ ```mermaid
+diff --git a/infra/stake-pool/README.md b/infra/stake-pool/README.md
+index dd99b6d..72069e8 100644
+--- a/infra/stake-pool/README.md
++++ b/infra/stake-pool/README.md
+@@ -1,65 +1,231 @@
+-# CardFi Native Stake Pool `[CFI]`
++# CardFi Native Stake Pool `[CFI]` — Production Track
+ 
+-This directory is the deployment baseline for a CardFi-operated Cardano stake pool. It is separate from the CardFi lending contracts.
++此目錄是 CardFi 自營 Cardano 原生鏈上質押池的正式化部署套件。它和借貸抵押合約分開：委託者的 ADA 留在自己的錢包，只把 stake credential 委託給 `[CFI]`。
+ 
+-## Target topology
++## 上線策略
++
++```text
++Phase S0  本機靜態驗證
++Phase S1  Preprod：1 BP + 2 Relays + 離線金鑰 + 鏈上註冊
++Phase S2  Preprod 連續運行至少 2 epochs，演練 KES rotation/復原/告警
++Phase S3  Mainnet 全新金鑰儀式，硬體錢包或離線簽署，人工放行
++Phase S4  `[CFI]` 公開委託與 CardFi Wallet 原生整合
++```
++
++Mainnet 不沿用 Preprod 金鑰、錢包、資料庫或憑證。
++
++## 正式拓撲
+ 
+ ```mermaid
+ flowchart LR
+-  N[Cardano Network] <--> R1[Relay 1 / Asia]
+-  N <--> R2[Relay 2 / Europe]
+-  R1 <--> BP[Private Block Producer]
++  C["Cardano Network"] <--> R1["Relay 1 / Region A"]
++  C <--> R2["Relay 2 / Region B"]
++  R1 <--> BP["Private Block Producer"]
+   R2 <--> BP
+-  AG[Air-gapped Key Station] -. op cert only .-> BP
+-  M[Prometheus / Alerts] --> R1
+-  M --> R2
+-  M --> BP
+-```
+-
+-- One private block producer; no inbound public exposure.
+-- Two public relays on different providers/regions.
+-- Cold signing key and counter remain on an air-gapped machine.
+-- Only KES, VRF and operational certificate reach the producer. Prefer a KES agent for production.
+-- Pool metadata is hosted over HTTPS and its hash is committed in the registration certificate.
+-
+-## Current state
+-
+-| Layer | State |
+-|---|---|
+-| Topology templates | Ready |
+-| systemd service templates | Ready |
+-| Metadata and registration script | Ready with typed placeholders |
+-| Real servers, DNS and TLS | `HOST_RELAY_1`, `HOST_RELAY_2`, `HOST_BP` pending |
+-| Cold/KES/VRF keys | Must be generated during an air-gapped ceremony |
+-| Preprod registration | Pending funded test wallet and provider endpoints |
+-| Mainnet registration | After Preprod burn-in and operator review |
+-
+-## Deployment order
+-
+-1. Copy `pool.env.example` to a private operator environment and fill all placeholders.
+-2. Provision the two relays and block producer on independent hosts.
+-3. Install the pinned `cardano-node` and `cardano-cli` release on every node.
+-4. Sync relays first, then sync the block producer through only those relays.
+-5. On the air-gapped host, generate cold, VRF and KES material and issue the op cert.
+-6. Move only `node.cert`, `vrf.skey` and `kes.skey` to `/run/secrets` on the producer; keep `cold.skey` and `cold.counter` offline.
+-7. Publish `metadata/poolMetaData.json` via HTTPS and calculate its hash.
+-8. Run the registration script on Preprod; delegate the pledge address to the new pool.
+-9. Monitor sync, peer count, KES period, missed slots and block propagation for at least two epochs.
+-10. Repeat the ceremony for mainnet using new, network-specific keys and explicit operator approval.
+-
+-## Security gates
+-
+-- Never generate or commit live signing keys in this repository.
+-- Never expose the block-producer port to the public internet.
+-- Keep payment keys separate from node keys.
+-- Store encrypted cold-key backups in at least two physically separate locations.
+-- Rotate KES/op-cert before expiry and always use the latest `cold.counter`.
+-- Use a DNS name for each relay and monitor pool retirement/metadata state.
+-
+-## Verification
++  AG["Air-gapped Key Station"] -. "node.cert + KES/VRF only" .-> BP
++  MON["Prometheus / Alertmanager"] --> R1
++  MON --> R2
++  MON --> BP
++```
++
++- Block Producer 沒有公開 Cardano inbound；只與自己的兩台 Relay 通訊。
++- Relay 分散在不同供應商或地區，公開 `3001/tcp`。
++- `cold.skey`、`cold.counter`、付款與 stake signing keys 永遠留在離線站。
++- Block Producer 僅取得 `node.cert`、`vrf.skey`、`kes.skey`；Mainnet 優先升級至 KES Agent。
++
++## 最低主機規格
++
++### Preprod
++
++- 三台 Ubuntu Linux：1 Block Producer、2 Relay
++- 每台至少 2 vCPU、4 GB RAM、20 GB SSD；實務建議 8 GB RAM、80 GB SSD
++- Relay 需要公開 IPv4、固定 DNS；BP 使用私網 IP
++
++### Mainnet
++
++- 1 BP + 至少 2 Relays，另備監控與離線金鑰站
++- 每台至少 2 CPU；建議 24 GB RAM、350–500 GB NVMe
++- 穩定頻寬、異地供應商、快照與告警
++
++## 第一次部署：Preprod
++
++### 1. 建立私有環境檔
++
++```bash
++cd infra/stake-pool
++cp pool.env.example pool.env
++chmod 600 pool.env
++```
++
++填入：
++
++- `RELAY_1_DNS`、`RELAY_2_DNS`
++- 64 字元以內且不 redirect 的 `POOL_METADATA_URL`
++- `CARDANO_NODE_VERSION` 與官方 amd64／arm64 release SHA-256（範本目前固定 11.0.1 官方 checksums）
++- 合理的 Preprod pledge、margin
++
++正式 metadata 已放在 `public/pool.json`，GitHub Pages 啟用後預期發布至 `https://doki03164.github.io/CARDFI/pool.json`。鏈上註冊前必須確認該網址已生效、沒有 redirect，且 hash 與本機一致。
++
++### 2. 產生並驗證網路設定
++
++在管理用 Linux 主機：
++
++```bash
++./scripts/render-config.sh ./pool.env
++./scripts/preflight.sh ./pool.env
++```
++
++`render-config.sh` 會從 Cardano 官方環境端點下載 config/genesis/topology，逐一做 JSON 檢查並產生 `SHA256SUMS`。BP topology 強制 `useLedgerAfterSlot=-1`、沒有 bootstrap/public peers。
++
++### 3. 安裝兩台 Relay
++
++每台 Relay 的私有 `pool.env`：
++
++```text
++NODE_ROLE=relay
++```
++
++先把 repo 與 `build/rendered/preprod` 傳入主機，再執行：
++
++```bash
++sudo ./scripts/install-host.sh ./pool.env
++sudo systemctl start cardano-node
++sudo journalctl -u cardano-node -f
++```
++
++Relay 防火牆只公開 SSH 管理來源與 `3001/tcp`。Prometheus/Grafana 不直接公開網際網路。
++
++先預覽再套用主機防火牆：
++
++```bash
++./scripts/firewall-plan.sh ./pool.env plan
++sudo env APPLY_FIREWALL=YES ./scripts/firewall-plan.sh ./pool.env apply
++```
++
++### 4. 安裝 Block Producer
++
++BP 的私有 `pool.env`：
++
++```text
++NODE_ROLE=block-producer
++```
++
++```bash
++sudo ./scripts/install-host.sh ./pool.env
++```
++
++先保持服務停止。BP 的 `6000/tcp` 只允許兩台 Relay 私網來源；公網不得直接連線。
++
++### 5. 離線金鑰儀式
++
++在斷網 Linux USB／離線電腦安裝同版 `cardano-cli`，將環境檔放在 repo 以外；輸出目錄必須不存在且位於 Git 工作樹外：
++
++```bash
++./airgap-key-ceremony.sh /offline/pool.env /offline/cardfi-preprod-keys
++```
++
++產出 cold/KES/VRF/payment/stake keys、地址與 pool ID。完成後：
++
++1. 抄錄 `payment.addr`，從 Preprod faucet 取得 test ADA。
++2. 將 `cold.skey` 和最新 `cold.counter` 做兩份 age 加密異地備份。
++3. 不把任何 `.skey` 放入 Git、雲端同步資料夾或 Relay。
++
++```bash
++./backup-cold-keys.sh /offline/cardfi-preprod-keys age1RECIPIENT /media/usb/cardfi-preprod-keys.tar.gz.age
++sha256sum --check /media/usb/cardfi-preprod-keys.tar.gz.age.sha256
++```
++
++### 6. 建立 Operational Certificate
++
++在已同步的 online node 取得 KES period：
++
++```bash
++slotsPerKESPeriod=$(jq -r '.slotsPerKESPeriod' /etc/cardano/shelley-genesis.json)
++currentSlot=$(cardano-cli latest query tip --testnet-magic 1 | jq -r '.slot')
++echo $((currentSlot / slotsPerKESPeriod))
++```
++
++將數字帶回離線站：
++
++```bash
++./issue-op-cert.sh /offline/cardfi-preprod-keys KES_PERIOD /offline/hot-transfer
++```
++
++把 `hot-transfer` 經加密媒體送至 BP，然後：
++
++```bash
++sudo ./scripts/install-hot-credentials.sh ./pool.env /secure/hot-transfer
++sudo systemctl start cardano-node
++./scripts/health-check.sh ./pool.env
++```
++
++### 7. 建立池註冊交易
++
++Online node 準備不可變上下文：
++
++```bash
++./scripts/prepare-registration-online.sh ./pool.env ./build/registration-context
++```
++
++將 context 帶到離線站並產生 pool/stake/delegation certificates：
++
++```bash
++./register-pool.sh /offline/pool.env /offline/registration-context /offline/cardfi-preprod-keys /offline/certificates
++```
++
++把 certificates 帶回 online node，建立 unsigned transaction：
++
++```bash
++./scripts/build-registration-tx.sh ./pool.env /secure/certificates ./build/registration-tx
++cat ./build/registration-tx/tx.view.txt
++```
++
++確認 pledge、deposit、fee、change address 與有效期後，把 `tx.raw` 帶到離線站：
++
++```bash
++./airgap-sign-registration.sh /offline/pool.env /offline/tx.raw /offline/cardfi-preprod-keys /offline/tx.signed
++```
++
++將簽署結果帶回 online node：
++
++```bash
++./scripts/submit-registration.sh ./pool.env ./build/tx.signed
++./scripts/verify-onchain.sh ./pool.env ./public/cold.vkey ./public/stake.addr
++```
++
++提交前的最後人工閘門：公開 metadata hash 必須相同、Pool ID 正確、付款輸入只來自營運地址、change 回到同一地址。
++
++## 維運要求
++
++- 每日：service、sync、peer、磁碟、錯誤率、區塊高度。
++- 每 epoch：pool stake snapshot、assigned/minted/missed slots、成本與獎勵。
++- KES：提前 14 天告警並演練 rotation；永遠使用最新 `cold.counter`。
++- 每月：還原一份離線備份到隔離機並驗證 hash，不啟動簽署。
++- 升級：先 Relay 1、觀察、Relay 2、觀察，最後 BP；保留舊 binary 與 config 回滾。
++- Preprod 至少連續通過兩個 epoch，再召開 Mainnet go/no-go review。
++
++Prometheus 初始規則位於 `monitoring/prometheus-alerts.yml`。
++
++## 驗證
++
++Windows repo 靜態檢查：
+ 
+ ```powershell
+ ./scripts/verify-templates.ps1
+ ```
+ 
+-Production commands must run on the target Linux hosts with current protocol parameters. Values such as minimum pool cost are queried from the ledger at registration time rather than hard-coded.
++Linux 節點執行：
++
++```bash
++./scripts/preflight.sh ./pool.env
++./scripts/health-check.sh ./pool.env
++./scripts/verify-onchain.sh ./pool.env /public/cold.vkey /public/stake.addr
++```
++
++## 安全紅線
++
++- Repo、GitHub Actions、OneDrive、Relay、監控主機不得出現 `.skey`。
++- Mainnet raw-key 腳本預設鎖定；正式 pledge/payment 建議硬體錢包或可恢復的離線 mnemonic 流程。
++- BP 位址不放進 pool registration，也不讓 ledger peer discovery 暴露。
++- 不使用未驗證 SHA-256 的 cardano-node binary。
++- 不在尚未同步的節點計算 KES period、建交易或判斷鏈上狀態。
+diff --git a/infra/stake-pool/deployment/preprod-manifest.json b/infra/stake-pool/deployment/preprod-manifest.json
+new file mode 100644
+index 0000000..d7b386e
+--- /dev/null
++++ b/infra/stake-pool/deployment/preprod-manifest.json
+@@ -0,0 +1,30 @@
++{
++  "schemaVersion": 1,
++  "pool": {
++    "name": "CardFi Native Stake Pool",
++    "ticker": "CFI",
++    "network": "preprod"
++  },
++  "release": {
++    "cardanoNode": "11.0.1",
++    "linuxAmd64Sha256": "40e88a543564251338c4888ef79fde51d2306c18b48ac308c9eab3220e3a13f0",
++    "linuxArm64Sha256": "c66ca441048630051de1d1c0c2f3b988c5fc97eab80052202f052517c4c6e428"
++  },
++  "topology": {
++    "blockProducers": 1,
++    "relays": 2,
++    "blockProducerPubliclyReachable": false,
++    "regions": ["TARGET_REGION_A", "TARGET_REGION_B"]
++  },
++  "gates": {
++    "templatesVerified": true,
++    "serversProvisioned": false,
++    "dnsConfigured": false,
++    "metadataPublished": false,
++    "offlineCeremonyComplete": false,
++    "nodesSynced": false,
++    "poolRegistered": false,
++    "twoEpochBurnInComplete": false
++  },
++  "secretMaterialCommitted": false
++}
+diff --git a/infra/stake-pool/metadata/poolMetaData.json b/infra/stake-pool/metadata/poolMetaData.json
+index 4943f72..3e4e4c0 100644
+--- a/infra/stake-pool/metadata/poolMetaData.json
++++ b/infra/stake-pool/metadata/poolMetaData.json
+@@ -2,5 +2,5 @@
+   "name": "CardFi Native Stake Pool",
+   "description": "CardFi-operated Cardano stake pool supporting native ADA staking and the CardFi ecosystem.",
+   "ticker": "CFI",
+-  "homepage": "https://TARGET_DOMAIN/stake"
++  "homepage": "https://doki03164.github.io/CARDFI/"
+ }
+diff --git a/infra/stake-pool/monitoring/prometheus-alerts.yml b/infra/stake-pool/monitoring/prometheus-alerts.yml
+new file mode 100644
+index 0000000..d963d18
+--- /dev/null
++++ b/infra/stake-pool/monitoring/prometheus-alerts.yml
+@@ -0,0 +1,18 @@
++groups:
++  - name: cardfi-stake-pool
++    rules:
++      - alert: CardanoNodeDown
++        expr: up{job=~"cardano-.*"} == 0
++        for: 2m
++        labels: { severity: critical }
++        annotations: { summary: "Cardano node target is down" }
++      - alert: CardanoDiskSpaceLow
++        expr: node_filesystem_avail_bytes{mountpoint="/var/lib/cardano"} / node_filesystem_size_bytes{mountpoint="/var/lib/cardano"} < 0.15
++        for: 10m
++        labels: { severity: warning }
++        annotations: { summary: "Cardano database disk has less than 15% free space" }
++      - alert: CardanoRelayPeerFloor
++        expr: cardano_node_metrics_peers_connectedPeers_int < 3
++        for: 10m
++        labels: { severity: warning }
++        annotations: { summary: "Cardano relay peer count is below the operating floor" }
+diff --git a/infra/stake-pool/pool.env.example b/infra/stake-pool/pool.env.example
+index e9840d6..0305933 100644
+--- a/infra/stake-pool/pool.env.example
++++ b/infra/stake-pool/pool.env.example
+@@ -1,14 +1,19 @@
++# Copy to pool.env outside source control. Preprod is the mandatory first stage.
+ # Network
+ NETWORK=preprod
+ CARDANO_NODE_NETWORK_ID=1
+ CARDANO_NODE_SOCKET_PATH=/run/cardano/node.socket
++CARDANO_NODE_VERSION=11.0.1
++CARDANO_NODE_SHA256_AMD64=40e88a543564251338c4888ef79fde51d2306c18b48ac308c9eab3220e3a13f0
++CARDANO_NODE_SHA256_ARM64=c66ca441048630051de1d1c0c2f3b988c5fc97eab80052202f052517c4c6e428
++CARDANO_CONFIG_BASE_URL=https://book.world.dev.cardano.org/environments/preprod
+ 
+ # CardFi pool identity
+ POOL_NAME=CardFi Native Stake Pool
+ POOL_TICKER=CFI
+ POOL_DESCRIPTION=CardFi-operated Cardano stake pool supporting native staking and the CardFi ecosystem.
+-POOL_HOMEPAGE=https://TARGET_DOMAIN/stake
+-POOL_METADATA_URL=https://TARGET_DOMAIN/.well-known/cardfi-pool.json
++POOL_HOMEPAGE=https://doki03164.github.io/CARDFI/
++POOL_METADATA_URL=https://doki03164.github.io/CARDFI/pool.json
+ 
+ # Economics (lovelace / fraction)
+ POOL_PLEDGE_LOVELACE=500000000000
+@@ -20,9 +25,24 @@ RELAY_1_DNS=HOST_RELAY_1
+ RELAY_2_DNS=HOST_RELAY_2
+ RELAY_PORT=3001
+ BP_PORT=6000
++NODE_PROMETHEUS_PORT=12798
++ADMIN_SSH_CIDR=TARGET_ADMIN_PUBLIC_IP/32
++RELAY_1_PRIVATE_CIDR=TARGET_RELAY_1_PRIVATE_IP/32
++RELAY_2_PRIVATE_CIDR=TARGET_RELAY_2_PRIVATE_IP/32
+ 
+ # File locations — secrets are never committed
+ POOL_KEYS_DIR=/secure/offline/cardfi-pool
+ PAYMENT_ADDR_FILE=/secure/payment/payment.addr
+ STAKE_VKEY_FILE=/secure/stake/stake.vkey
+ STAKE_SKEY_FILE=/secure/stake/stake.skey
++
++# Host installation
++NODE_ROLE=relay
++CARDANO_USER=cardano
++CARDANO_CONFIG_DIR=/etc/cardano
++CARDANO_DB_DIR=/var/lib/cardano/db
++CARDANO_RUNTIME_DIR=/run/cardano
++
++# Mainnet raw-key generation remains disabled unless explicitly acknowledged.
++ALLOW_MAINNET_RAW_KEYS=NO
++STAKE_ALREADY_REGISTERED=NO
+diff --git a/infra/stake-pool/scripts/airgap-key-ceremony.sh b/infra/stake-pool/scripts/airgap-key-ceremony.sh
+new file mode 100755
+index 0000000..92bb978
+--- /dev/null
++++ b/infra/stake-pool/scripts/airgap-key-ceremony.sh
+@@ -0,0 +1,30 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++OUT="${2:?usage: airgap-key-ceremony.sh ENV_FILE ABSOLUTE_OUTPUT_DIR}"
++[[ "$OUT" = /* ]] || die 'output directory must be absolute'
++[[ ! -e "$OUT" ]] || die "output path already exists: $OUT"
++mkdir -p "$OUT"
++assert_not_git_tree "$OUT"
++chmod 700 "$OUT"
++umask 077
++require_cmd cardano-cli
++
++if [[ "$NETWORK" == mainnet && "${ALLOW_MAINNET_RAW_KEYS:-NO}" != YES ]]; then
++  die 'mainnet raw-key generation is locked; use a hardware wallet or explicitly set ALLOW_MAINNET_RAW_KEYS=YES after operator review'
++fi
++
++cardano-cli node key-gen --cold-verification-key-file "$OUT/cold.vkey" --cold-signing-key-file "$OUT/cold.skey" --operational-certificate-issue-counter "$OUT/cold.counter"
++cardano-cli node key-gen-KES --verification-key-file "$OUT/kes.vkey" --signing-key-file "$OUT/kes.skey"
++cardano-cli node key-gen-VRF --verification-key-file "$OUT/vrf.vkey" --signing-key-file "$OUT/vrf.skey"
++cardano-cli address key-gen --verification-key-file "$OUT/payment.vkey" --signing-key-file "$OUT/payment.skey"
++cardano-cli stake-address key-gen --verification-key-file "$OUT/stake.vkey" --signing-key-file "$OUT/stake.skey"
++mapfile -t NET < <(network_args)
++cardano-cli stake-address build --stake-verification-key-file "$OUT/stake.vkey" "${NET[@]}" --out-file "$OUT/stake.addr"
++cardano-cli address build --payment-verification-key-file "$OUT/payment.vkey" --stake-verification-key-file "$OUT/stake.vkey" "${NET[@]}" --out-file "$OUT/payment.addr"
++cardano-cli stake-pool id --cold-verification-key-file "$OUT/cold.vkey" --output-format hex > "$OUT/pool.id"
++(cd "$OUT" && sha256sum ./*.vkey ./*.addr pool.id > public-manifest.sha256)
++printf 'CEREMONY COMPLETE\nnetwork=%s\npool_id=%s\npayment_address=%s\n' "$NETWORK" "$(cat "$OUT/pool.id")" "$(cat "$OUT/payment.addr")"
+diff --git a/infra/stake-pool/scripts/airgap-sign-registration.sh b/infra/stake-pool/scripts/airgap-sign-registration.sh
+new file mode 100755
+index 0000000..9f3b2c6
+--- /dev/null
++++ b/infra/stake-pool/scripts/airgap-sign-registration.sh
+@@ -0,0 +1,21 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++TX_BODY="${2:?usage: airgap-sign-registration.sh ENV_FILE TX_RAW AIRGAP_KEYS_DIR OUTPUT_FILE}"
++KEYS="${3:?key directory required}"
++OUT="${4:?output file required}"
++[[ ! -e "$OUT" && ! -e "$OUT.sha256" ]] || die 'signed transaction output already exists'
++assert_not_git_tree "$KEYS"
++require_file "$TX_BODY"
++TX_DIR="$(cd "$(dirname "$TX_BODY")" && pwd)"
++if [[ -f "$TX_DIR/unsigned.sha256" ]]; then (cd "$TX_DIR" && sha256sum --check --strict unsigned.sha256); fi
++for file in payment.skey cold.skey stake.skey; do require_file "$KEYS/$file"; done
++mapfile -t NET < <(network_args)
++cardano-cli conway transaction sign "${NET[@]}" --tx-body-file "$TX_BODY" \
++  --signing-key-file "$KEYS/payment.skey" --signing-key-file "$KEYS/cold.skey" --signing-key-file "$KEYS/stake.skey" --out-file "$OUT"
++chmod 600 "$OUT"
++(cd "$(dirname "$OUT")" && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256")
++info 'signed transaction created; visually confirm the reviewed tx body hash before returning it online'
+diff --git a/infra/stake-pool/scripts/backup-cold-keys.sh b/infra/stake-pool/scripts/backup-cold-keys.sh
+new file mode 100755
+index 0000000..885f040
+--- /dev/null
++++ b/infra/stake-pool/scripts/backup-cold-keys.sh
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++KEYS="${1:?usage: backup-cold-keys.sh AIRGAP_KEYS_DIR AGE_RECIPIENT OUTPUT_FILE}"
++RECIPIENT="${2:?age recipient is required}"
++OUT="${3:?encrypted output file is required}"
++[[ ! -e "$OUT" && ! -e "$OUT.sha256" ]] || die 'backup output already exists'
++assert_not_git_tree "$KEYS"
++require_cmd age; require_cmd tar; require_cmd sha256sum
++for file in cold.skey cold.vkey cold.counter payment.skey payment.vkey stake.skey stake.vkey; do require_file "$KEYS/$file"; done
++umask 077
++tar -C "$KEYS" -czf - cold.skey cold.vkey cold.counter payment.skey payment.vkey stake.skey stake.vkey | age -r "$RECIPIENT" -o "$OUT"
++chmod 600 "$OUT"
++(cd "$(dirname "$OUT")" && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256")
++info 'encrypted backup created; store two verified copies in physically separate locations'
+diff --git a/infra/stake-pool/scripts/build-registration-tx.sh b/infra/stake-pool/scripts/build-registration-tx.sh
+new file mode 100755
+index 0000000..39f19f3
+--- /dev/null
++++ b/infra/stake-pool/scripts/build-registration-tx.sh
+@@ -0,0 +1,32 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++CERTS="${2:?usage: build-registration-tx.sh ENV_FILE CERT_DIR OUTPUT_DIR}"
++OUT="${3:?output directory is required}"
++for file in pool.cert deleg.cert certificates.sha256; do require_file "$CERTS/$file"; done
++(cd "$CERTS" && sha256sum --check --strict certificates.sha256)
++require_file "$PAYMENT_ADDR_FILE"
++require_cmd cardano-cli; require_cmd jq
++ensure_empty_private_dir "$OUT"
++mapfile -t NET < <(network_args)
++ADDRESS="$(cat "$PAYMENT_ADDR_FILE")"
++cardano-cli latest query utxo "${NET[@]}" --address "$ADDRESS" --out-file "$OUT/utxo.json"
++TX_IN="$(jq -r 'keys[0] // empty' "$OUT/utxo.json")"
++[[ -n "$TX_IN" ]] || die 'payment address has no spendable UTxO'
++TIP="$(cardano-cli latest query tip "${NET[@]}" | jq -r '.slot')"
++[[ "$TIP" =~ ^[0-9]+$ ]] || die 'node tip has no numeric slot'
++CERT_ARGS=()
++if [[ "${STAKE_ALREADY_REGISTERED:-NO}" != YES ]]; then
++  require_file "$CERTS/stake.cert"
++  CERT_ARGS+=(--certificate-file "$CERTS/stake.cert")
++fi
++CERT_ARGS+=(--certificate-file "$CERTS/pool.cert" --certificate-file "$CERTS/deleg.cert")
++cardano-cli conway transaction build "${NET[@]}" --tx-in "$TX_IN" --change-address "$ADDRESS" \
++  "${CERT_ARGS[@]}" \
++  --invalid-hereafter "$((TIP + 1000))" --witness-override 3 --out-file "$OUT/tx.raw"
++cardano-cli conway transaction view --tx-body-file "$OUT/tx.raw" > "$OUT/tx.view.txt"
++(cd "$OUT" && sha256sum tx.raw tx.view.txt > unsigned.sha256)
++info "unsigned transaction built; review tx.view.txt before offline signing"
+diff --git a/infra/stake-pool/scripts/firewall-plan.sh b/infra/stake-pool/scripts/firewall-plan.sh
+new file mode 100755
+index 0000000..ba434a5
+--- /dev/null
++++ b/infra/stake-pool/scripts/firewall-plan.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++MODE="${2:-plan}"
++[[ "$NODE_ROLE" == relay || "$NODE_ROLE" == block-producer ]] || die 'NODE_ROLE must be relay or block-producer'
++reject_placeholder ADMIN_SSH_CIDR
++COMMANDS=("ufw default deny incoming" "ufw default allow outgoing" "ufw allow from $ADMIN_SSH_CIDR to any port 22 proto tcp")
++if [[ "$NODE_ROLE" == relay ]]; then
++  COMMANDS+=("ufw allow $RELAY_PORT/tcp")
++else
++  reject_placeholder RELAY_1_PRIVATE_CIDR
++  reject_placeholder RELAY_2_PRIVATE_CIDR
++  COMMANDS+=("ufw allow from $RELAY_1_PRIVATE_CIDR to any port $BP_PORT proto tcp")
++  COMMANDS+=("ufw allow from $RELAY_2_PRIVATE_CIDR to any port $BP_PORT proto tcp")
++fi
++COMMANDS+=("ufw logging low" "ufw --force enable")
++printf 'FIREWALL_PLAN role=%s\n' "$NODE_ROLE"
++printf '  %s\n' "${COMMANDS[@]}"
++[[ "$MODE" == plan ]] && exit 0
++[[ "$MODE" == apply ]] || die 'mode must be plan or apply'
++[[ "${APPLY_FIREWALL:-NO}" == YES ]] || die 'set APPLY_FIREWALL=YES after confirming SSH access and provider firewall rules'
++[[ "${EUID:-$(id -u)}" -eq 0 ]] || die 'run firewall apply as root'
++require_cmd ufw
++ufw default deny incoming
++ufw default allow outgoing
++ufw allow from "$ADMIN_SSH_CIDR" to any port 22 proto tcp
++if [[ "$NODE_ROLE" == relay ]]; then
++  ufw allow "$RELAY_PORT/tcp"
++else
++  ufw allow from "$RELAY_1_PRIVATE_CIDR" to any port "$BP_PORT" proto tcp
++  ufw allow from "$RELAY_2_PRIVATE_CIDR" to any port "$BP_PORT" proto tcp
++fi
++ufw logging low
++ufw --force enable
++ufw status verbose
+diff --git a/infra/stake-pool/scripts/health-check.sh b/infra/stake-pool/scripts/health-check.sh
+new file mode 100755
+index 0000000..8e65231
+--- /dev/null
++++ b/infra/stake-pool/scripts/health-check.sh
+@@ -0,0 +1,14 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++require_cmd cardano-cli; require_cmd jq; require_cmd systemctl
++mapfile -t NET < <(network_args)
++systemctl is-active --quiet cardano-node.service || die 'cardano-node.service is not active'
++TIP="$(cardano-cli latest query tip "${NET[@]}")"
++SYNC="$(jq -r '.syncProgress // "unknown"' <<<"$TIP")"
++SLOT="$(jq -r '.slot // 0' <<<"$TIP")"
++[[ "$SLOT" =~ ^[0-9]+$ && "$SLOT" -gt 0 ]] || die 'node has not reached a valid slot'
++printf 'HEALTHY network=%s slot=%s sync=%s service=active\n' "$NETWORK" "$SLOT" "$SYNC"
+diff --git a/infra/stake-pool/scripts/install-host.sh b/infra/stake-pool/scripts/install-host.sh
+new file mode 100755
+index 0000000..f65ee64
+--- /dev/null
++++ b/infra/stake-pool/scripts/install-host.sh
+@@ -0,0 +1,52 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "${1:-$ROOT/pool.env}"
++
++[[ "${EUID:-$(id -u)}" -eq 0 ]] || die 'run install-host.sh as root on Ubuntu Linux'
++[[ "$NODE_ROLE" == relay || "$NODE_ROLE" == block-producer ]] || die 'NODE_ROLE must be relay or block-producer'
++reject_placeholder CARDANO_NODE_VERSION
++require_cmd curl
++require_cmd tar
++require_cmd sha256sum
++
++export DEBIAN_FRONTEND=noninteractive
++apt-get update
++apt-get install -y --no-install-recommends ca-certificates curl jq tar libnuma1 libsnappy1v5
++if apt-cache show liburing2 >/dev/null 2>&1; then apt-get install -y --no-install-recommends liburing2;
++elif apt-cache show liburing1 >/dev/null 2>&1; then apt-get install -y --no-install-recommends liburing1; fi
++
++ARCH="$(uname -m)"
++case "$ARCH" in
++  x86_64) RELEASE_ARCH=amd64; EXPECTED_SHA256="${CARDANO_NODE_SHA256_AMD64:?CARDANO_NODE_SHA256_AMD64 is required}" ;;
++  aarch64|arm64) RELEASE_ARCH=arm64; EXPECTED_SHA256="${CARDANO_NODE_SHA256_ARM64:?CARDANO_NODE_SHA256_ARM64 is required}" ;;
++  *) die "unsupported architecture: $ARCH" ;;
++esac
++reject_placeholder EXPECTED_SHA256
++URL="https://github.com/IntersectMBO/cardano-node/releases/download/${CARDANO_NODE_VERSION}/cardano-node-${CARDANO_NODE_VERSION}-linux-${RELEASE_ARCH}.tar.gz"
++TMP="$(mktemp -d)"
++trap 'rm -rf "$TMP"' EXIT
++curl --proto '=https' --tlsv1.2 --fail --show-error --location "$URL" -o "$TMP/cardano-node.tar.gz"
++printf '%s  %s\n' "$EXPECTED_SHA256" "$TMP/cardano-node.tar.gz" | sha256sum --check --strict
++tar -xzf "$TMP/cardano-node.tar.gz" -C "$TMP"
++
++id "$CARDANO_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$CARDANO_USER"
++install -d -o "$CARDANO_USER" -g "$CARDANO_USER" -m 0750 "$CARDANO_CONFIG_DIR" "$CARDANO_DB_DIR" "$(dirname "$CARDANO_NODE_SOCKET_PATH")"
++install -m 0755 "$(find "$TMP" -type f -name cardano-node | head -1)" /usr/local/bin/cardano-node
++install -m 0755 "$(find "$TMP" -type f -name cardano-cli | head -1)" /usr/local/bin/cardano-cli
++
++RENDERED="$ROOT/build/rendered/$NETWORK"
++require_file "$RENDERED/config.json"
++install -m 0644 "$RENDERED"/*.json "$CARDANO_CONFIG_DIR/"
++if [[ "$NODE_ROLE" == relay ]]; then
++  install -m 0644 "$ROOT/systemd/cardano-node-relay.service" /etc/systemd/system/cardano-node.service
++else
++  install -m 0644 "$ROOT/systemd/cardano-node-block-producer.service" /etc/systemd/system/cardano-node.service
++  install -d -o "$CARDANO_USER" -g "$CARDANO_USER" -m 0750 "$CARDANO_CONFIG_DIR/credentials"
++fi
++systemctl daemon-reload
++systemctl enable cardano-node.service
++info "installed cardano-node $(cardano-node --version | head -1); start only after topology and credential review"
+diff --git a/infra/stake-pool/scripts/install-hot-credentials.sh b/infra/stake-pool/scripts/install-hot-credentials.sh
+new file mode 100755
+index 0000000..d532f94
+--- /dev/null
++++ b/infra/stake-pool/scripts/install-hot-credentials.sh
+@@ -0,0 +1,20 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++BUNDLE="${2:?usage: install-hot-credentials.sh ENV_FILE TRANSFER_BUNDLE_DIR}"
++[[ "${EUID:-$(id -u)}" -eq 0 ]] || die 'run as root on the block producer'
++for file in node.cert vrf.skey kes.skey transfer-manifest.sha256; do require_file "$BUNDLE/$file"; done
++(cd "$BUNDLE" && sha256sum --check --strict transfer-manifest.sha256)
++DEST="$CARDANO_CONFIG_DIR/credentials"
++install -d -o "$CARDANO_USER" -g "$CARDANO_USER" -m 0750 "$DEST"
++install -o "$CARDANO_USER" -g "$CARDANO_USER" -m 0400 "$BUNDLE/node.cert" "$DEST/node.cert.new"
++install -o "$CARDANO_USER" -g "$CARDANO_USER" -m 0400 "$BUNDLE/vrf.skey" "$DEST/vrf.skey.new"
++install -o "$CARDANO_USER" -g "$CARDANO_USER" -m 0400 "$BUNDLE/kes.skey" "$DEST/kes.skey.new"
++mv -f "$DEST/node.cert.new" "$DEST/node.cert"
++mv -f "$DEST/vrf.skey.new" "$DEST/vrf.skey"
++mv -f "$DEST/kes.skey.new" "$DEST/kes.skey"
++if systemctl is-active --quiet cardano-node.service; then pkill -HUP cardano-node; fi
++info 'hot credentials installed atomically; cold keys were not transferred'
+diff --git a/infra/stake-pool/scripts/issue-op-cert.sh b/infra/stake-pool/scripts/issue-op-cert.sh
+new file mode 100755
+index 0000000..46ca091
+--- /dev/null
++++ b/infra/stake-pool/scripts/issue-op-cert.sh
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++KEYS="${1:?usage: issue-op-cert.sh AIRGAP_KEYS_DIR KES_PERIOD OUTPUT_DIR}"
++KES_PERIOD="${2:?KES period is required}"
++OUT="${3:?output directory is required}"
++assert_not_git_tree "$KEYS"
++[[ "$KES_PERIOD" =~ ^[0-9]+$ ]] || die 'KES period must be an integer'
++for file in cold.skey cold.counter kes.vkey vrf.skey kes.skey; do require_file "$KEYS/$file"; done
++ensure_empty_private_dir "$OUT"
++cardano-cli node issue-op-cert --kes-verification-key-file "$KEYS/kes.vkey" --cold-signing-key-file "$KEYS/cold.skey" --operational-certificate-issue-counter "$KEYS/cold.counter" --kes-period "$KES_PERIOD" --out-file "$OUT/node.cert"
++install -m 0400 "$KEYS/vrf.skey" "$OUT/vrf.skey"
++install -m 0400 "$KEYS/kes.skey" "$OUT/kes.skey"
++(cd "$OUT" && sha256sum node.cert vrf.skey kes.skey > transfer-manifest.sha256)
++info "hot credential bundle created; cold.skey and cold.counter remain in $KEYS"
+diff --git a/infra/stake-pool/scripts/lib.sh b/infra/stake-pool/scripts/lib.sh
+new file mode 100755
+index 0000000..57d0c19
+--- /dev/null
++++ b/infra/stake-pool/scripts/lib.sh
+@@ -0,0 +1,59 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
++info() { printf 'INFO: %s\n' "$*"; }
++require_cmd() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
++require_file() { [[ -f "$1" ]] || die "required file not found: $1"; }
++require_dir() { [[ -d "$1" ]] || die "required directory not found: $1"; }
++resolve_host() {
++  if command -v getent >/dev/null 2>&1; then getent hosts "$1" >/dev/null;
++  elif command -v nslookup >/dev/null 2>&1; then nslookup "$1" >/dev/null;
++  else die 'no DNS resolver command found (getent or nslookup)'; fi
++}
++
++load_env() {
++  local env_file="${1:-}"
++  [[ -n "$env_file" ]] || die 'usage requires an environment file'
++  require_file "$env_file"
++  # shellcheck disable=SC1090
++  source "$env_file"
++  : "${NETWORK:?NETWORK is required}"
++  : "${CARDANO_NODE_NETWORK_ID:?CARDANO_NODE_NETWORK_ID is required}"
++  : "${CARDANO_NODE_SOCKET_PATH:?CARDANO_NODE_SOCKET_PATH is required}"
++  export CARDANO_NODE_NETWORK_ID CARDANO_NODE_SOCKET_PATH
++  case "$NETWORK" in preprod|preview|mainnet) ;; *) die "unsupported NETWORK=$NETWORK" ;; esac
++}
++
++network_args() {
++  if [[ "$NETWORK" == mainnet ]]; then printf '%s\n' '--mainnet';
++  else printf '%s\n' '--testnet-magic' "$CARDANO_NODE_NETWORK_ID"; fi
++}
++
++reject_placeholder() {
++  local name="$1" value="${!1:-}"
++  [[ -n "$value" ]] || die "$name is empty"
++  [[ "$value" != *TARGET* && "$value" != HOST_* && "$value" != *REQUIRED_* && "$value" != QUERY_* ]] || die "$name still contains a placeholder"
++}
++
++ensure_private_dir() {
++  local path="$1"
++  mkdir -p "$path"
++  chmod 700 "$path"
++}
++
++ensure_empty_private_dir() {
++  local path="$1"
++  if [[ -d "$path" && -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
++    die "output directory is not empty: $path"
++  fi
++  ensure_private_dir "$path"
++}
++
++assert_not_git_tree() {
++  local path
++  path="$(cd "$1" && pwd -P)"
++  if git -C "$path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
++    die "secret operation path must be outside a Git working tree: $path"
++  fi
++}
+diff --git a/infra/stake-pool/scripts/preflight.sh b/infra/stake-pool/scripts/preflight.sh
+new file mode 100755
+index 0000000..7f1ca21
+--- /dev/null
++++ b/infra/stake-pool/scripts/preflight.sh
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "${1:-$ROOT/pool.env}"
++for name in POOL_TICKER POOL_METADATA_URL POOL_PLEDGE_LOVELACE POOL_MARGIN RELAY_1_DNS RELAY_2_DNS RELAY_PORT BP_PORT CARDANO_NODE_VERSION CARDANO_NODE_SHA256_AMD64 CARDANO_NODE_SHA256_ARM64 CARDANO_CONFIG_BASE_URL; do reject_placeholder "$name"; done
++[[ "$POOL_TICKER" =~ ^[A-Z0-9]{3,9}$ ]] || die 'POOL_TICKER must be 3-9 uppercase alphanumeric characters'
++(( ${#POOL_METADATA_URL} <= 64 )) || die 'POOL_METADATA_URL exceeds the 64-character ledger limit'
++[[ "$POOL_MARGIN" =~ ^0(\.[0-9]+)?$|^1(\.0+)?$ ]] || die 'POOL_MARGIN must be between 0 and 1'
++[[ "$POOL_PLEDGE_LOVELACE" =~ ^[0-9]+$ ]] || die 'POOL_PLEDGE_LOVELACE must be an integer'
++[[ "$RELAY_PORT" =~ ^[0-9]+$ && "$BP_PORT" =~ ^[0-9]+$ ]] || die 'ports must be integers'
++resolve_host "$RELAY_1_DNS" || die "cannot resolve $RELAY_1_DNS"
++resolve_host "$RELAY_2_DNS" || die "cannot resolve $RELAY_2_DNS"
++curl --proto '=https' --tlsv1.2 --fail --silent --show-error --head "$POOL_METADATA_URL" >/dev/null
++printf 'PREFLIGHT_OK network=%s ticker=%s relays=%s,%s metadata_length=%s\n' "$NETWORK" "$POOL_TICKER" "$RELAY_1_DNS" "$RELAY_2_DNS" "${#POOL_METADATA_URL}"
+diff --git a/infra/stake-pool/scripts/prepare-registration-online.sh b/infra/stake-pool/scripts/prepare-registration-online.sh
+new file mode 100755
+index 0000000..1bc1c50
+--- /dev/null
++++ b/infra/stake-pool/scripts/prepare-registration-online.sh
+@@ -0,0 +1,20 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++OUT="${2:-$ROOT/build/registration-context}"
++for name in POOL_METADATA_URL; do reject_placeholder "$name"; done
++require_cmd cardano-cli; require_cmd curl; require_cmd jq
++ensure_empty_private_dir "$OUT"
++mapfile -t NET < <(network_args)
++cardano-cli latest query protocol-parameters "${NET[@]}" --out-file "$OUT/protocol.json"
++cardano-cli latest query tip "${NET[@]}" > "$OUT/tip.json"
++curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location "$POOL_METADATA_URL" -o "$OUT/poolMetaData.json"
++[[ "$(curl -sS -o /dev/null -w '%{num_redirects}' "$POOL_METADATA_URL")" == 0 ]] || die 'metadata URL must not redirect'
++cardano-cli latest stake-pool metadata-hash --pool-metadata-file "$OUT/poolMetaData.json" --out-file "$OUT/poolMetaDataHash.txt"
++jq -e '.minPoolCost and (.minPoolCost|tonumber>=0)' "$OUT/protocol.json" >/dev/null
++(cd "$OUT" && sha256sum protocol.json tip.json poolMetaData.json poolMetaDataHash.txt > context.sha256)
++info "registration context prepared: $OUT"
+diff --git a/infra/stake-pool/scripts/register-pool.sh b/infra/stake-pool/scripts/register-pool.sh
+old mode 100644
+new mode 100755
+index ecba6b9..750d009
+--- a/infra/stake-pool/scripts/register-pool.sh
++++ b/infra/stake-pool/scripts/register-pool.sh
+@@ -1,50 +1,35 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+-
+-# Run on the designated transaction-build host after an offline key ceremony.
+-# No signing key should be stored in this repository.
+-
+-ENV_FILE="${1:-../pool.env}"
+-source "$ENV_FILE"
+-
+-required=(POOL_TICKER POOL_METADATA_URL POOL_PLEDGE_LOVELACE POOL_MARGIN RELAY_1_DNS RELAY_2_DNS PAYMENT_ADDR_FILE STAKE_VKEY_FILE)
+-for name in "${required[@]}"; do
+-  value="${!name:-}"
+-  if [[ -z "$value" || "$value" == *TARGET* || "$value" == HOST_* ]]; then
+-    echo "Missing concrete value: $name" >&2
+-    exit 2
+-  fi
+-done
+-
+-NETWORK_ARGS=(--testnet-magic "$CARDANO_NODE_NETWORK_ID")
+-if [[ "$NETWORK" == "mainnet" ]]; then NETWORK_ARGS=(--mainnet); fi
+-
+-mkdir -p build
+-cardano-cli latest query protocol-parameters "${NETWORK_ARGS[@]}" --out-file build/protocol.json
+-MIN_POOL_COST=$(jq -r '.minPoolCost' build/protocol.json)
+-POOL_COST="${POOL_COST_LOVELACE/QUERY_MIN_POOL_COST/$MIN_POOL_COST}"
+-
+-curl --fail --silent --show-error "$POOL_METADATA_URL" -o build/poolMetaData.json
+-cardano-cli latest stake-pool metadata-hash --pool-metadata-file build/poolMetaData.json > build/poolMetaDataHash.txt
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++CONTEXT="${2:?usage: register-pool.sh ENV_FILE CONTEXT_DIR AIRGAP_KEYS_DIR OUTPUT_DIR}"
++KEYS="${3:?air-gapped key directory is required}"
++OUT="${4:?output directory is required}"
++assert_not_git_tree "$KEYS"
++for name in POOL_METADATA_URL POOL_PLEDGE_LOVELACE POOL_MARGIN RELAY_1_DNS RELAY_2_DNS RELAY_PORT; do reject_placeholder "$name"; done
++for file in protocol.json poolMetaDataHash.txt context.sha256; do require_file "$CONTEXT/$file"; done
++(cd "$CONTEXT" && sha256sum --check --strict context.sha256)
++for file in cold.vkey cold.skey vrf.vkey stake.vkey; do require_file "$KEYS/$file"; done
++ensure_empty_private_dir "$OUT"
++MIN_POOL_COST="$(jq -r '.minPoolCost' "$CONTEXT/protocol.json")"
++POOL_COST="${POOL_COST_LOVELACE:-$MIN_POOL_COST}"
++[[ "$POOL_COST" != QUERY_MIN_POOL_COST ]] || POOL_COST="$MIN_POOL_COST"
++(( POOL_COST >= MIN_POOL_COST )) || die "pool cost $POOL_COST is below ledger minimum $MIN_POOL_COST"
+ 
+ cardano-cli latest stake-pool registration-certificate \
+-  --cold-verification-key-file "$POOL_KEYS_DIR/cold.vkey" \
+-  --vrf-verification-key-file "$POOL_KEYS_DIR/vrf.vkey" \
+-  --pool-pledge "$POOL_PLEDGE_LOVELACE" \
+-  --pool-cost "$POOL_COST" \
+-  --pool-margin "$POOL_MARGIN" \
+-  --pool-reward-account-verification-key-file "$STAKE_VKEY_FILE" \
+-  --pool-owner-stake-verification-key-file "$STAKE_VKEY_FILE" \
++  --cold-verification-key-file "$KEYS/cold.vkey" --vrf-verification-key-file "$KEYS/vrf.vkey" \
++  --pool-pledge "$POOL_PLEDGE_LOVELACE" --pool-cost "$POOL_COST" --pool-margin "$POOL_MARGIN" \
++  --pool-reward-account-verification-key-file "$KEYS/stake.vkey" --pool-owner-stake-verification-key-file "$KEYS/stake.vkey" \
+   --single-host-pool-relay "$RELAY_1_DNS" --pool-relay-port "$RELAY_PORT" \
+   --single-host-pool-relay "$RELAY_2_DNS" --pool-relay-port "$RELAY_PORT" \
+-  --metadata-url "$POOL_METADATA_URL" \
+-  --metadata-hash "$(cat build/poolMetaDataHash.txt)" \
+-  --out-file build/pool.cert
+-
+-cardano-cli latest stake-address stake-delegation-certificate \
+-  --stake-verification-key-file "$STAKE_VKEY_FILE" \
+-  --cold-verification-key-file "$POOL_KEYS_DIR/cold.vkey" \
+-  --out-file build/deleg.cert
+-
+-echo "Generated build/pool.cert and build/deleg.cert."
+-echo "Review all values, then build and sign the registration transaction using the isolated payment/stake signing workflow."
++  --metadata-url "$POOL_METADATA_URL" --metadata-hash "$(cat "$CONTEXT/poolMetaDataHash.txt")" --out-file "$OUT/pool.cert"
++cardano-cli latest stake-address stake-delegation-certificate --stake-verification-key-file "$KEYS/stake.vkey" --cold-verification-key-file "$KEYS/cold.vkey" --out-file "$OUT/deleg.cert"
++if [[ "${STAKE_ALREADY_REGISTERED:-NO}" != YES ]]; then
++  STAKE_DEPOSIT="$(jq -r '.stakeAddressDeposit' "$CONTEXT/protocol.json")"
++  [[ "$STAKE_DEPOSIT" =~ ^[0-9]+$ ]] || die 'protocol parameters contain no numeric stakeAddressDeposit'
++  cardano-cli latest stake-address registration-certificate --stake-verification-key-file "$KEYS/stake.vkey" --key-reg-deposit-amt "$STAKE_DEPOSIT" --out-file "$OUT/stake.cert"
++fi
++(cd "$OUT" && sha256sum ./*.cert > certificates.sha256)
++info "offline certificates generated: $OUT"
+diff --git a/infra/stake-pool/scripts/render-config.sh b/infra/stake-pool/scripts/render-config.sh
+new file mode 100755
+index 0000000..10b3f53
+--- /dev/null
++++ b/infra/stake-pool/scripts/render-config.sh
+@@ -0,0 +1,36 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "${1:-$ROOT/pool.env}"
++
++for name in RELAY_1_DNS RELAY_2_DNS RELAY_PORT BP_PORT CARDANO_CONFIG_BASE_URL; do reject_placeholder "$name"; done
++require_cmd curl
++require_cmd jq
++
++OUT="${2:-$ROOT/build/rendered/$NETWORK}"
++if [[ -d "$OUT" && -n "$(find "$OUT" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then die "output directory is not empty: $OUT"; fi
++mkdir -p "$OUT"
++
++files=(config.json topology.json peer-snapshot.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json)
++for file in "${files[@]}"; do
++  info "downloading $file"
++  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
++    "$CARDANO_CONFIG_BASE_URL/$file" -o "$OUT/$file"
++  jq empty "$OUT/$file"
++done
++
++jq --arg r1 "$RELAY_1_DNS" --arg r2 "$RELAY_2_DNS" --argjson port "$RELAY_PORT" \
++  '.localRoots[0].accessPoints = [{address:$r1,port:$port},{address:$r2,port:$port}] |
++   .localRoots[0].advertise = false |
++   .localRoots[0].hotValency = 2 |
++   .localRoots[0].warmValency = 2 |
++   .bootstrapPeers = null | .publicRoots = [] | .useLedgerAfterSlot = -1' \
++  "$ROOT/topology/block-producer-topology.json" > "$OUT/block-producer-topology.json"
++
++jq empty "$OUT/block-producer-topology.json"
++cp "$OUT/topology.json" "$OUT/relay-topology.json"
++(cd "$OUT" && sha256sum "${files[@]}" block-producer-topology.json relay-topology.json > SHA256SUMS)
++info "rendered and hashed configuration: $OUT"
+diff --git a/infra/stake-pool/scripts/submit-registration.sh b/infra/stake-pool/scripts/submit-registration.sh
+new file mode 100755
+index 0000000..42dbeba
+--- /dev/null
++++ b/infra/stake-pool/scripts/submit-registration.sh
+@@ -0,0 +1,12 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++TX="${2:?usage: submit-registration.sh ENV_FILE SIGNED_TX}"
++require_file "$TX"
++mapfile -t NET < <(network_args)
++cardano-cli conway transaction submit "${NET[@]}" --tx-file "$TX"
++TXID="$(cardano-cli conway transaction txid --tx-file "$TX")"
++printf 'SUBMITTED_TX_ID=%s\n' "$TXID"
+diff --git a/infra/stake-pool/scripts/verify-onchain.sh b/infra/stake-pool/scripts/verify-onchain.sh
+new file mode 100755
+index 0000000..999bef9
+--- /dev/null
++++ b/infra/stake-pool/scripts/verify-onchain.sh
+@@ -0,0 +1,16 @@
++#!/usr/bin/env bash
++set -euo pipefail
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=lib.sh
++source "$SCRIPT_DIR/lib.sh"
++load_env "$1"
++COLD_VKEY="${2:?usage: verify-onchain.sh ENV_FILE COLD_VKEY STAKE_ADDRESS_FILE}"
++STAKE_ADDR_FILE="${3:?stake address file is required}"
++require_file "$COLD_VKEY"; require_file "$STAKE_ADDR_FILE"
++mapfile -t NET < <(network_args)
++POOL_ID="$(cardano-cli latest stake-pool id --cold-verification-key-file "$COLD_VKEY" --output-format hex)"
++SNAPSHOT="$(cardano-cli latest query stake-snapshot "${NET[@]}" --stake-pool-id "$POOL_ID")"
++STAKE_INFO="$(cardano-cli latest query stake-address-info "${NET[@]}" --address "$(cat "$STAKE_ADDR_FILE")")"
++jq -e 'type == "object"' <<<"$SNAPSHOT" >/dev/null
++jq -e 'type == "array" and length > 0' <<<"$STAKE_INFO" >/dev/null
++printf 'ONCHAIN_OK network=%s pool_id=%s stake_address_registered=true\n' "$NETWORK" "$POOL_ID"
+diff --git a/infra/stake-pool/scripts/verify-templates.ps1 b/infra/stake-pool/scripts/verify-templates.ps1
+index 6438874..d177528 100644
+--- a/infra/stake-pool/scripts/verify-templates.ps1
++++ b/infra/stake-pool/scripts/verify-templates.ps1
+@@ -7,7 +7,24 @@ $required = @(
+   'topology/relay-topology.json',
+   'systemd/cardano-node-block-producer.service',
+   'systemd/cardano-node-relay.service',
+-  'scripts/register-pool.sh'
++  'scripts/lib.sh',
++  'scripts/render-config.sh',
++  'scripts/install-host.sh',
++  'scripts/preflight.sh',
++  'scripts/airgap-key-ceremony.sh',
++  'scripts/issue-op-cert.sh',
++  'scripts/install-hot-credentials.sh',
++  'scripts/firewall-plan.sh',
++  'scripts/prepare-registration-online.sh',
++  'scripts/register-pool.sh',
++  'scripts/build-registration-tx.sh',
++  'scripts/airgap-sign-registration.sh',
++  'scripts/submit-registration.sh',
++  'scripts/verify-onchain.sh',
++  'scripts/health-check.sh',
++  'scripts/backup-cold-keys.sh',
++  'monitoring/prometheus-alerts.yml',
++  'deployment/preprod-manifest.json'
+ )
+ 
+ foreach ($relative in $required) {
+@@ -18,11 +35,36 @@ foreach ($relative in $required) {
+ Get-Content (Join-Path $root 'metadata/poolMetaData.json') -Raw | ConvertFrom-Json | Out-Null
+ Get-Content (Join-Path $root 'topology/block-producer-topology.json') -Raw | ConvertFrom-Json | Out-Null
+ Get-Content (Join-Path $root 'topology/relay-topology.json') -Raw | ConvertFrom-Json | Out-Null
++Get-Content (Join-Path $root 'deployment/preprod-manifest.json') -Raw | ConvertFrom-Json | Out-Null
+ 
+ $metadata = Get-Content (Join-Path $root 'metadata/poolMetaData.json') -Raw | ConvertFrom-Json
+ if ($metadata.ticker -notmatch '^[A-Z0-9]{3,9}$') { throw 'Ticker must be 3-9 uppercase alphanumeric characters.' }
+ if ($metadata.description.Length -gt 255) { throw 'Metadata description exceeds 255 characters.' }
++if ($metadata.homepage -notmatch '^https://') { throw 'Metadata homepage must use HTTPS.' }
++$publicMetadataPath = Join-Path (Split-Path -Parent (Split-Path -Parent $root)) 'public/pool.json'
++if (-not (Test-Path $publicMetadataPath)) { throw 'Missing Vite-public pool metadata.' }
++$publicMetadata = Get-Content $publicMetadataPath -Raw | ConvertFrom-Json
++if (($metadata | ConvertTo-Json -Compress) -ne ($publicMetadata | ConvertTo-Json -Compress)) { throw 'Infrastructure and public pool metadata differ.' }
++
++$trackedSecrets = Get-ChildItem -Path $root -Recurse -File | Where-Object { $_.Extension -in '.skey', '.mnemonic', '.age' }
++if ($trackedSecrets) { throw "Secret-like artifact found under repository infrastructure tree: $($trackedSecrets.FullName -join ', ')" }
++
++$bp = Get-Content (Join-Path $root 'topology/block-producer-topology.json') -Raw
++if ($bp -notmatch '"useLedgerAfterSlot"\s*:\s*-1') { throw 'Block producer must disable ledger peer discovery.' }
++if ($bp -notmatch '"bootstrapPeers"\s*:\s*null') { throw 'Block producer must not configure bootstrap peers.' }
++
++$bashPath = if (Test-Path 'C:\Program Files\Git\bin\bash.exe') { 'C:\Program Files\Git\bin\bash.exe' } else { (Get-Command bash -ErrorAction SilentlyContinue).Source }
++if ($bashPath) {
++  $scripts = Get-ChildItem (Join-Path $root 'scripts') -Filter '*.sh'
++  foreach ($script in $scripts) {
++    & $bashPath -n $script.FullName
++    if ($LASTEXITCODE -ne 0) { throw "Bash syntax validation failed: $($script.Name)" }
++  }
++  Write-Output "OK: $($scripts.Count) Bash scripts pass syntax validation"
++}
+ 
+ Write-Output "OK: $($required.Count) stake-pool templates present"
+ Write-Output "OK: JSON documents parse successfully"
+ Write-Output "OK: ticker and description constraints pass"
++Write-Output "OK: no signing-key artifacts present"
++Write-Output "OK: block producer topology remains private"
+diff --git a/infra/stake-pool/systemd/cardano-node-block-producer.service b/infra/stake-pool/systemd/cardano-node-block-producer.service
+index 1944842..7b30b79 100644
+--- a/infra/stake-pool/systemd/cardano-node-block-producer.service
++++ b/infra/stake-pool/systemd/cardano-node-block-producer.service
+@@ -7,6 +7,7 @@ Wants=network-online.target
+ Type=simple
+ User=cardano
+ Group=cardano
++WorkingDirectory=/etc/cardano
+ RuntimeDirectory=cardano
+ RuntimeDirectoryMode=0750
+ ExecStart=/usr/local/bin/cardano-node run \
+@@ -16,15 +17,22 @@ ExecStart=/usr/local/bin/cardano-node run \
+   --socket-path /run/cardano/node.socket \
+   --host-addr 0.0.0.0 \
+   --port 6000 \
+-  --shelley-kes-key /run/secrets/kes.skey \
+-  --shelley-vrf-key /run/secrets/vrf.skey \
+-  --shelley-operational-certificate /run/secrets/node.cert
++  --shelley-kes-key /etc/cardano/credentials/kes.skey \
++  --shelley-vrf-key /etc/cardano/credentials/vrf.skey \
++  --shelley-operational-certificate /etc/cardano/credentials/node.cert
+ Restart=always
+ RestartSec=10
+ NoNewPrivileges=true
+ PrivateTmp=true
++PrivateDevices=true
+ ProtectSystem=strict
+ ProtectHome=true
++ProtectKernelTunables=true
++ProtectKernelModules=true
++ProtectControlGroups=true
++ProtectClock=true
++RestrictSUIDSGID=true
++LockPersonality=true
+ ReadWritePaths=/var/lib/cardano /run/cardano
+ UMask=0077
+ LimitNOFILE=1048576
+diff --git a/infra/stake-pool/systemd/cardano-node-relay.service b/infra/stake-pool/systemd/cardano-node-relay.service
+index cf828da..5d5e682 100644
+--- a/infra/stake-pool/systemd/cardano-node-relay.service
++++ b/infra/stake-pool/systemd/cardano-node-relay.service
+@@ -7,6 +7,7 @@ Wants=network-online.target
+ Type=simple
+ User=cardano
+ Group=cardano
++WorkingDirectory=/etc/cardano
+ RuntimeDirectory=cardano
+ RuntimeDirectoryMode=0750
+ ExecStart=/usr/local/bin/cardano-node run \
+@@ -20,8 +21,15 @@ Restart=always
+ RestartSec=10
+ NoNewPrivileges=true
+ PrivateTmp=true
++PrivateDevices=true
+ ProtectSystem=strict
+ ProtectHome=true
++ProtectKernelTunables=true
++ProtectKernelModules=true
++ProtectControlGroups=true
++ProtectClock=true
++RestrictSUIDSGID=true
++LockPersonality=true
+ ReadWritePaths=/var/lib/cardano /run/cardano
+ UMask=0077
+ LimitNOFILE=1048576
+diff --git a/package.json b/package.json
+index 5dbe340..a3d682a 100644
+--- a/package.json
++++ b/package.json
+@@ -11,6 +11,7 @@
+     "contracts:build": "aiken build contracts",
+     "deploy:manifest": "node scripts/generate-deployment-manifest.mjs",
+     "deploy:manifest:check": "node scripts/generate-deployment-manifest.mjs --check",
++    "stake-pool:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File infra/stake-pool/scripts/verify-templates.ps1",
+     "preview": "vite preview"
+   },
+   "dependencies": {
+diff --git a/public/pool.json b/public/pool.json
+new file mode 100644
+index 0000000..3e4e4c0
+--- /dev/null
++++ b/public/pool.json
+@@ -0,0 +1,6 @@
++{
++  "name": "CardFi Native Stake Pool",
++  "description": "CardFi-operated Cardano stake pool supporting native ADA staking and the CardFi ecosystem.",
++  "ticker": "CFI",
++  "homepage": "https://doki03164.github.io/CARDFI/"
++}

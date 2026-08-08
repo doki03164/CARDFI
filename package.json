@@ -11,6 +11,7 @@
     "contracts:build": "aiken build contracts",
     "deploy:manifest": "node scripts/generate-deployment-manifest.mjs",
     "deploy:manifest:check": "node scripts/generate-deployment-manifest.mjs --check",
+    "stake-pool:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File infra/stake-pool/scripts/verify-templates.ps1",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -37,7 +37,7 @@ npm.cmd run dev
 | Markets | Supply、Borrow、利用率、動態利率 | 互動式模擬 |
 | Positions | LTV、Health Factor、抵押與債務狀態 | 互動式模擬 |
 | Flash Lab | 原子閃電執行、費用與收據 | 互動式模擬 |
-| Native Staking | 委託至 CardFi 自營 `[CFI]` 鏈上質押池 | 互動式模擬 + SPO 部署模板 |
+| Native Staking | 委託至 CardFi 自營 `[CFI]` 鏈上質押池 | 互動式模擬 + Preprod 正式部署套件 |
 | Vault Hooks | Leveraged Farming、Self-Repaying Loan、Liquidation Shield | API/流程展示 |
 | Governance | 參數治理、Oracle key rotation | 合約與 UI 展示 |
 | Wallet | CIP-30 錢包偵測與連線 | Adapter 已完成 |
@@ -47,6 +47,10 @@ npm.cmd run dev
 
 1. **借貸抵押（Collateral）**：資產鎖入 CardFi 借貸部位，用於計算 LTV 與 Health Factor。
 2. **Cardano 原生鏈上質押（Native PoS Delegation）**：CardFi 建置並營運自己的 `[CFI]` Stake Pool；用戶透過 stake credential 委託參與 Cardano PoS。正式產品將以 delegation/stake-right 保留架構，避免把 PoS 委託收益錯寫成協議保證收益。
+
+### `[CFI]` 正式質押池優先軌
+
+`infra/stake-pool/` 已包含 cardano-node 11.0.1 pinned checksums、官方 Preprod config 產生器、1 BP + 2 Relay 安裝、離線 key ceremony、KES/op-cert、池註冊 build/sign/submit 分離流程、健康檢查、Prometheus 告警及加密備份。實際鏈上狀態仍以 `deployment/preprod-manifest.json` 為準；主機、DNS、金鑰與註冊尚未偽裝成已完成。
 
 ## 系統架構
 

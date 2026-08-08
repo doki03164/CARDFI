@@ -9,3 +9,11 @@ vite.config.d.ts
 .env.*
 !*.env.example
 contracts/build/
+infra/stake-pool/build/
+infra/stake-pool/private/
+infra/stake-pool/pool.env
+*.skey
+*.mnemonic
+*.age
+.tmp-config-verify-*/
+.tmp-artifact-verify-*/

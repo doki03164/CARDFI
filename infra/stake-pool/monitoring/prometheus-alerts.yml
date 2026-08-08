@@ -1,0 +1,18 @@
+groups:
+  - name: cardfi-stake-pool
+    rules:
+      - alert: CardanoNodeDown
+        expr: up{job=~"cardano-.*"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Cardano node target is down" }
+      - alert: CardanoDiskSpaceLow
+        expr: node_filesystem_avail_bytes{mountpoint="/var/lib/cardano"} / node_filesystem_size_bytes{mountpoint="/var/lib/cardano"} < 0.15
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Cardano database disk has less than 15% free space" }
+      - alert: CardanoRelayPeerFloor
+        expr: cardano_node_metrics_peers_connectedPeers_int < 3
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Cardano relay peer count is below the operating floor" }
