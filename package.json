@@ -9,6 +9,8 @@
     "test": "vitest run",
     "contracts:check": "aiken check contracts",
     "contracts:build": "aiken build contracts",
+    "deploy:manifest": "node scripts/generate-deployment-manifest.mjs",
+    "deploy:manifest:check": "node scripts/generate-deployment-manifest.mjs --check",
     "preview": "vite preview"
   },
   "dependencies": {

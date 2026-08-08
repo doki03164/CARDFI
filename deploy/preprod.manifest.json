@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "network": {
+    "name": "preprod",
+    "networkMagic": 1
+  },
+  "status": "parameterization-required",
+  "blueprint": {
+    "path": "contracts/plutus.json",
+    "sha256": "b51109d8bdb026ff9294668876432fdaf57fccca7274a6ad19aebce6267e6dde",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "Aiken",
+      "version": "v1.1.23+8949565"
+    }
+  },
+  "validators": [
+    {
+      "title": "governance.governance.spend",
+      "hash": "64b0d65a071a3d58052fec7dd569846c43dc4a81d53ad5822010de31",
+      "compiledCodeBytes": 1380,
+      "parameters": [
+        {
+          "name": "governance_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<GOVERNANCE_POLICY_CBOR>"
+        },
+        {
+          "name": "governance_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<GOVERNANCE_NAME_CBOR>"
+        }
+      ]
+    },
+    {
+      "title": "market.market.spend",
+      "hash": "14c01b4906bbd2c76667d333a9d462ba859b3728651b4c315a413200",
+      "compiledCodeBytes": 5613,
+      "parameters": [
+        {
+          "name": "market_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<MARKET_POLICY_CBOR>"
+        },
+        {
+          "name": "market_asset",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<MARKET_ASSET_CBOR>"
+        },
+        {
+          "name": "shard_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<SHARD_POLICY_CBOR>"
+        },
+        {
+          "name": "shard_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<SHARD_NAME_CBOR>"
+        },
+        {
+          "name": "oracle_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<ORACLE_POLICY_CBOR>"
+        },
+        {
+          "name": "oracle_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<ORACLE_NAME_CBOR>"
+        },
+        {
+          "name": "position_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<POSITION_POLICY_CBOR>"
+        },
+        {
+          "name": "governance_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<GOVERNANCE_POLICY_CBOR>"
+        },
+        {
+          "name": "governance_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<GOVERNANCE_NAME_CBOR>"
+        }
+      ]
+    },
+    {
+      "title": "oracle.oracle.spend",
+      "hash": "6651fbd68f654ba2eed21d6d19dceffcdf73f9930bb42bd93cf2a73f",
+      "compiledCodeBytes": 1926,
+      "parameters": [
+        {
+          "name": "oracle_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<ORACLE_POLICY_CBOR>"
+        },
+        {
+          "name": "oracle_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<ORACLE_NAME_CBOR>"
+        },
+        {
+          "name": "governance_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<GOVERNANCE_POLICY_CBOR>"
+        },
+        {
+          "name": "governance_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<GOVERNANCE_NAME_CBOR>"
+        }
+      ]
+    },
+    {
+      "title": "position.position.spend",
+      "hash": "1aa0889691276922f22c9dda9c7063da2f322ef4bfd4a3d4a8957f32",
+      "compiledCodeBytes": 3453,
+      "parameters": [
+        {
+          "name": "position_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<POSITION_POLICY_CBOR>"
+        },
+        {
+          "name": "position_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<POSITION_NAME_CBOR>"
+        },
+        {
+          "name": "collateral_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<COLLATERAL_POLICY_CBOR>"
+        },
+        {
+          "name": "collateral_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<COLLATERAL_NAME_CBOR>"
+        },
+        {
+          "name": "market_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<MARKET_POLICY_CBOR>"
+        },
+        {
+          "name": "market_asset",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<MARKET_ASSET_CBOR>"
+        },
+        {
+          "name": "shard_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<SHARD_POLICY_CBOR>"
+        },
+        {
+          "name": "shard_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<SHARD_NAME_CBOR>"
+        },
+        {
+          "name": "oracle_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<ORACLE_POLICY_CBOR>"
+        },
+        {
+          "name": "oracle_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<ORACLE_NAME_CBOR>"
+        },
+        {
+          "name": "governance_policy",
+          "schema": "#/definitions/cardano~1assets~1PolicyId",
+          "value": "<GOVERNANCE_POLICY_CBOR>"
+        },
+        {
+          "name": "governance_name",
+          "schema": "#/definitions/cardano~1assets~1AssetName",
+          "value": "<GOVERNANCE_NAME_CBOR>"
+        }
+      ]
+    }
+  ]
+}

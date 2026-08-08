@@ -39,6 +39,9 @@ jobs:
       - name: Verify blueprint exists
         run: test -s contracts/plutus.json
 
+      - name: Verify Preprod deployment manifest
+        run: npm run deploy:manifest:check
+
       - name: Verify stake-pool templates
         shell: pwsh
         run: ./infra/stake-pool/scripts/verify-templates.ps1
