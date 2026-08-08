@@ -37,6 +37,8 @@ The UI, transaction builder, accounting and risk disclosures must never merge th
 4. Liquidation uses a fresh independent oracle input, never a same-transaction DEX spot price.
 5. A hook is bound to an approved script hash, asset allowlist, maximum slippage and expiry.
 
+The compiled market validator now enforces items 1–3 at the shard transition layer: exactly one continuing output at the same script address, NFT preservation, exact asset delta, exact next datum and monotonic nonce. Oracle-signed collateral valuation remains the next contract gate.
+
 ## Production services
 
 | Service | Suggested implementation | Purpose |

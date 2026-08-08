@@ -1,50 +1,61 @@
+use aiken/collection/list
+use cardano/assets
+use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction
 use cardano/transaction.{OutputReference, Transaction}
+use cardfi/market as market_logic
 use cardfi/types
 
 /// CardFi market state-transition validator.
 ///
 /// This first implementation isolates arithmetic invariants so they can be
 /// property-tested before value-level shard NFT and oracle checks are added.
-validator market {
+validator market(
+  market_policy: PolicyId,
+  market_asset: AssetName,
+  shard_policy: PolicyId,
+  shard_name: AssetName,
+) {
   spend(
     datum: Option<types.MarketDatum>,
     redeemer: types.MarketAction,
-    _own_ref: OutputReference,
-    _tx: Transaction,
+    own_ref: OutputReference,
+    tx: Transaction,
   ) {
     expect Some(previous) = datum
 
-    when redeemer is {
-      types.Supply { amount } -> amount > 0 && previous.supplied >= 0
+    expect Some(own_input) =
+      tx.inputs
+        |> list.find(fn(input) { input.output_reference == own_ref })
 
-      types.Withdraw { amount } ->
-        amount > 0 && amount <= previous.supplied - previous.borrowed
+    expect [continuing_output] =
+      tx.outputs
+        |> list.filter(
+            fn(output) {
+              output.address == own_input.output.address
+                && assets.has_nft(output.value, shard_policy, shard_name)
+            },
+          )
 
-      types.Borrow { amount, collateral_value, ltv_bps } ->
-        amount > 0 && ltv_bps > 0 && ltv_bps < 10_000 && amount * 10_000 <= collateral_value * ltv_bps && amount <= previous.supplied - previous.borrowed
+    expect transaction.InlineDatum(next_data) = continuing_output.datum
+    expect next: types.MarketDatum = next_data
 
-      types.Repay { amount } -> amount > 0 && amount <= previous.borrowed
-
-      types.FlashExecute { principal, fee_paid } ->
-        principal > 0 && principal <= previous.supplied - previous.borrowed && fee_paid * 10_000 >= principal * previous.fee_bps
+    and {
+      assets.has_nft(own_input.output.value, shard_policy, shard_name),
+      assets.quantity_of(continuing_output.value, market_policy, market_asset) ==
+        assets.quantity_of(
+          own_input.output.value,
+          market_policy,
+          market_asset,
+        ) + market_logic.pool_delta(redeemer),
+      market_logic.valid_action(previous, redeemer),
+      market_logic.valid_state(previous),
+      market_logic.valid_state(next),
+      next == market_logic.next_state(previous, redeemer),
     }
   }
 
   else(_) {
     fail
   }
-}
-
-test flash_fee_invariant() {
-  let principal = 100_000
-  let fee_bps = 7
-  let paid = 70
-  paid * 10_000 >= principal * fee_bps
-}
-
-test underpaid_flash_fee_fails() fail {
-  let principal = 100_000
-  let fee_bps = 7
-  let paid = 69
-  expect paid * 10_000 >= principal * fee_bps
 }
