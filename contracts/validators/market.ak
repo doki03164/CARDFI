@@ -1,5 +1,5 @@
 use cardano/transaction.{OutputReference, Transaction}
-use cardfi/types.{MarketAction, MarketDatum}
+use cardfi/types
 
 /// CardFi market state-transition validator.
 ///
@@ -7,32 +7,26 @@ use cardfi/types.{MarketAction, MarketDatum}
 /// property-tested before value-level shard NFT and oracle checks are added.
 validator market {
   spend(
-    datum: Option<MarketDatum>,
-    redeemer: MarketAction,
+    datum: Option<types.MarketDatum>,
+    redeemer: types.MarketAction,
     _own_ref: OutputReference,
     _tx: Transaction,
   ) {
     expect Some(previous) = datum
 
     when redeemer is {
-      Supply { amount } -> amount > 0 && previous.supplied >= 0
+      types.Supply { amount } -> amount > 0 && previous.supplied >= 0
 
-      Withdraw { amount } ->
+      types.Withdraw { amount } ->
         amount > 0 && amount <= previous.supplied - previous.borrowed
 
-      Borrow { amount, collateral_value, ltv_bps } ->
-        amount > 0
-          && ltv_bps > 0
-          && ltv_bps < 10_000
-          && amount * 10_000 <= collateral_value * ltv_bps
-          && amount <= previous.supplied - previous.borrowed
+      types.Borrow { amount, collateral_value, ltv_bps } ->
+        amount > 0 && ltv_bps > 0 && ltv_bps < 10_000 && amount * 10_000 <= collateral_value * ltv_bps && amount <= previous.supplied - previous.borrowed
 
-      Repay { amount } -> amount > 0 && amount <= previous.borrowed
+      types.Repay { amount } -> amount > 0 && amount <= previous.borrowed
 
-      FlashExecute { principal, fee_paid } ->
-        principal > 0
-          && principal <= previous.supplied - previous.borrowed
-          && fee_paid * 10_000 >= principal * previous.fee_bps
+      types.FlashExecute { principal, fee_paid } ->
+        principal > 0 && principal <= previous.supplied - previous.borrowed && fee_paid * 10_000 >= principal * previous.fee_bps
     }
   }
 

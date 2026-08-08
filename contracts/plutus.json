@@ -1,0 +1,148 @@
+{
+  "preamble": {
+    "title": "cardfi/protocol",
+    "version": "0.1.0",
+    "plutusVersion": "v3",
+    "compiler": {
+      "name": "Aiken",
+      "version": "v1.1.23+8949565"
+    },
+    "license": "Apache-2.0"
+  },
+  "validators": [
+    {
+      "title": "market.market.spend",
+      "datum": {
+        "title": "datum",
+        "schema": {
+          "$ref": "#/definitions/cardfi~1types~1MarketDatum"
+        }
+      },
+      "redeemer": {
+        "title": "redeemer",
+        "schema": {
+          "$ref": "#/definitions/cardfi~1types~1MarketAction"
+        }
+      },
+      "compiledCode": "5902cf01010029800aba2aba1aab9faab9eaab9dab9a48888896600264653001300700198039804000cdc3a400530070024888966002600460106ea800e26466453001159800980098059baa0028cc004c038c030dd500148c03cc04000660166ea801e6e2120004888966002600a00515980098009bad30123010375401713371290001bad30123010375400914a080722b300130090028992cc004c008006266e24004cdc09bad30133011375400a6eb4c010c044dd5002c528201e375a602460206ea802e2b30013370e900200144c8ca60026eb4c0500066eb4c050c0540066eb4c050009222598009803000c566002600c00515980099b880024828270062b30013371266e0920a09c010013370400600513371200266e04dd6980b980a9baa009375a6010602a6ea80262941013452820268a50404d14a08098602800260206ea802e2b30013370e900300144c96600260040031337120026eb4c010c044dd5002c528201e375a602460206ea802e26464b300130030018acc004cdc480099b81375a602860246ea8018dd6980298091baa006899b89337040026eb4c050c054c054c054c048dd500319b82482827004dd6980a180a801452820208a5040406eb4c04c004c040dd5005a01c4038807100e22c805260166ea801e601c0069112cc004c01000a26464b30013014002802c590121bad3012001300f3754015159800980400144c8c96600260280050058b2024375a6024002601e6ea802a2b30013370e900200144c8c8ca60026eb4c0500066eb4c05000e6eb4c05000922259800980c00240262c80b060280026026002601e6ea802a2b30013370e900300144c8c96600260280050058b2024375a6024002601e6ea802a2b30013370e900400144c8c8cc8966002602c0070078b2028375a60260026eb4c04c008c04c004c03cdd500545900d201a4034806900d0c030c034004dc3a400060126ea800e2c8038600e00260066ea801e29344d9590011",
+      "hash": "28c4483445459b63b8e7a4520c7483c4c0c82f7ba11cebf8e6beffd5"
+    },
+    {
+      "title": "market.market.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5902cf01010029800aba2aba1aab9faab9eaab9dab9a48888896600264653001300700198039804000cdc3a400530070024888966002600460106ea800e26466453001159800980098059baa0028cc004c038c030dd500148c03cc04000660166ea801e6e2120004888966002600a00515980098009bad30123010375401713371290001bad30123010375400914a080722b300130090028992cc004c008006266e24004cdc09bad30133011375400a6eb4c010c044dd5002c528201e375a602460206ea802e2b30013370e900200144c8ca60026eb4c0500066eb4c050c0540066eb4c050009222598009803000c566002600c00515980099b880024828270062b30013371266e0920a09c010013370400600513371200266e04dd6980b980a9baa009375a6010602a6ea80262941013452820268a50404d14a08098602800260206ea802e2b30013370e900300144c96600260040031337120026eb4c010c044dd5002c528201e375a602460206ea802e26464b300130030018acc004cdc480099b81375a602860246ea8018dd6980298091baa006899b89337040026eb4c050c054c054c054c048dd500319b82482827004dd6980a180a801452820208a5040406eb4c04c004c040dd5005a01c4038807100e22c805260166ea801e601c0069112cc004c01000a26464b30013014002802c590121bad3012001300f3754015159800980400144c8c96600260280050058b2024375a6024002601e6ea802a2b30013370e900200144c8c8ca60026eb4c0500066eb4c05000e6eb4c05000922259800980c00240262c80b060280026026002601e6ea802a2b30013370e900300144c8c96600260280050058b2024375a6024002601e6ea802a2b30013370e900400144c8c8cc8966002602c0070078b2028375a60260026eb4c04c008c04c004c03cdd500545900d201a4034806900d0c030c034004dc3a400060126ea800e2c8038600e00260066ea801e29344d9590011",
+      "hash": "28c4483445459b63b8e7a4520c7483c4c0c82f7ba11cebf8e6beffd5"
+    }
+  ],
+  "definitions": {
+    "Int": {
+      "dataType": "integer"
+    },
+    "cardfi/types/MarketAction": {
+      "title": "MarketAction",
+      "anyOf": [
+        {
+          "title": "Supply",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "title": "amount",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        },
+        {
+          "title": "Withdraw",
+          "dataType": "constructor",
+          "index": 1,
+          "fields": [
+            {
+              "title": "amount",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        },
+        {
+          "title": "Borrow",
+          "dataType": "constructor",
+          "index": 2,
+          "fields": [
+            {
+              "title": "amount",
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "title": "collateral_value",
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "title": "ltv_bps",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        },
+        {
+          "title": "Repay",
+          "dataType": "constructor",
+          "index": 3,
+          "fields": [
+            {
+              "title": "amount",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        },
+        {
+          "title": "FlashExecute",
+          "dataType": "constructor",
+          "index": 4,
+          "fields": [
+            {
+              "title": "principal",
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "title": "fee_paid",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        }
+      ]
+    },
+    "cardfi/types/MarketDatum": {
+      "title": "MarketDatum",
+      "anyOf": [
+        {
+          "title": "MarketDatum",
+          "dataType": "constructor",
+          "index": 0,
+          "fields": [
+            {
+              "title": "supplied",
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "title": "borrowed",
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "title": "reserve",
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "title": "fee_bps",
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "title": "nonce",
+              "$ref": "#/definitions/Int"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

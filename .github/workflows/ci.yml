@@ -1,0 +1,44 @@
+name: CardFi CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Test protocol math and wallet adapter
+        run: npm test
+
+      - name: Type-check and build Web dApp
+        run: npm run build
+
+      - name: Check Aiken validators
+        run: npm run contracts:check
+
+      - name: Build Plutus V3 blueprint
+        run: npm run contracts:build
+
+      - name: Verify blueprint exists
+        run: test -s contracts/plutus.json
+
+      - name: Verify stake-pool templates
+        shell: pwsh
+        run: ./infra/stake-pool/scripts/verify-templates.ps1

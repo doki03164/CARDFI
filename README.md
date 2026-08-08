@@ -9,6 +9,7 @@ Cardano-native lending, yield-bearing ADA collateral, atomic flash execution and
 - Market utilization, LTV, health-factor and flash-fee calculations
 - Wallet-connected and disconnected position states
 - Aiken market validator skeleton with core arithmetic invariants
+- Reproducible Plutus V3 blueprint and GitHub CI
 - CardFi-operated `[CFI]` stake-pool topology, systemd and registration templates
 - CIP-30 wallet discovery and connection adapter
 - Unit tests for protocol math
@@ -50,4 +51,4 @@ CardFi_*.md           Whitepaper, pitch and Catalyst copy
 
 ## Current stage
 
-This is a testnet-oriented MVP. Mainnet release requires completed value-level validators, wallet SDK integration, independent oracle inputs, external audits, reproducible builds and a guarded-launch risk process.
+This is a testnet-oriented MVP. The first Aiken market validator now compiles reproducibly to `contracts/plutus.json`; mainnet release still requires completed value-level validators, independent oracle inputs, external audits and a guarded-launch risk process.
